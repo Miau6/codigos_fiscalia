@@ -6,6 +6,15 @@ incidencia <- read_rds("bases_uet_2025-01-30.rds")
 base <- incidencia$base
 
 tablas_especialies <- list()
+
+tema_ppp <-     theme(#axis.text.x = element_text(angle = 90), 
+  axis.text = element_text(size=17),
+  axis.text.y = element_text(face = "bold"), 
+  legend.position = "bottom", 
+  axis.title = element_text(size=20, face = "bold"), 
+  legend.text = element_text(size=18, face = "bold")
+)
+
 grafica_tendencia <- function(datos=data, 
                               fecha_inicio_global=fecha_inicio_global,
                               fecha_lim=fecha_lim, 
@@ -22,15 +31,23 @@ grafica_tendencia <- function(datos=data,
     ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month")) %>% 
     summarise(Total=mean(Total)) %>% 
     ggplot(aes(fecha_inicio, Total)) +
-    geom_point(alpha=.7, color=colores[1]) +
-    geom_smooth(se=F, color=colores[7]) + theme_light() + tema_fgj +
+    geom_point(alpha=.7, color=colores[1], size=1.8) +
+    geom_smooth(se=F, color=colores[7], 
+                span=.1, linewidth = 2,
+                ) + theme_light() + tema_fgj +
     # geom_smooth(se=F, color=colores[2], method = "lm") +
-    scale_x_date(date_labels = "%b-%y", date_breaks = "3 month") +
+    scale_x_date(date_labels = "%b\n%y", date_breaks = "4 month") +
     labs(x="Fecha de inicio", y="Promedio diario", 
          title = paste0("Promedio diario de carpetas por ", delito), 
          subtitle = paste0("Desde ",  format(as_date(fecha_inicio_global), "%B de %Y"), " a ",
                            format(as_date(fecha_lim), "%B de %Y"))) +
-    theme(axis.text.x = element_text(angle = 90)) 
+    theme(#axis.text.x = element_text(angle = 90), 
+      axis.text = element_text(size=17),
+      axis.text.y = element_text(face = "bold"), 
+      legend.position = "bottom", 
+      axis.title = element_text(size=20, face = "bold"), 
+      legend.text = element_text(size=18, face = "bold")
+    )
   
   return(gr_trend)
 }
@@ -310,7 +327,7 @@ gr_casa_tipo <- data %>%
 
 
 ggsave(plot = gr_casa_tipo, 
-       "./graficas_incidencia/especiales/gr_casa.png", width = 12, height = 6
+       "./graficas_incidencia/especiales/gr_casa.svg", width = 12, height = 6
 )
 
 tablas_especialies[[3]] <- data %>% 
@@ -810,21 +827,39 @@ ggsave(plot = gr_usurpacion,
 
 
 #metemos clasificacion
-clasificacion <- readxl::read_excel("20250131_Nueva categorización.xlsx", 
+clasificacion <- readxl::read_excel("20250131_Nueva categorización (3).xlsx", 
                                     sheet = "Hoja 1"
                                     ) %>% clean_names() %>% 
   filter(is.na(exclusion)) %>% 
   select(delito, modalidad_delito, 
-         cat_mp2, del_mp
+         nueva_categoria, del_mp
          )
+
 
 
 
 ####Generamos la base de datos
 
+id_menor <- incidencia$victimas %>% 
+  filter(edad<18) %>% pull(id_ap)
+
 data_bruto <- data %>% 
-  left_join(clasificacion, by=c("delito", "modalidad_delito"))
+  left_join(clasificacion, by=c("delito", "modalidad_delito")) %>% 
+  mutate(nueva_categoria=case_when(
+    (delito=="VIOLACIÓN" | 
+      modalidad_delito %in% c("ABUSO", "ACOSO", "CONTRA LA INTIMIDAD SEXUAL")) & 
+      id_ap %in% id_menor ~ "10. Delitos contra NNA", 
+    modalidad_delito %in% c("ROBO A SUCURSAL BANCARIA DENTRO DE  TIENDAS DE AUTOSERVICIO S/V", 
+                            "ROBO A SUCURSAL BANCARIA DENTRO DE  TIENDAS DE AUTOSERVICIO CON VIOLENCIA") ~ "13. Robo a negocio",
+    
+    T ~ nueva_categoria, 
+    
+  ))
   
+
+data_bruto %>% 
+  filter(nueva_categoria %in% sort(unique(clasificacion$nueva_categoria))[13]) %>% 
+  tabyl(modalidad_delito)
 
 # 
 # data_bruto <- data %>% 
@@ -945,11 +980,11 @@ fecha_lim <- "2024-12-31"
 #                  
 #                  )
 
-delitos_ppp <- grep("\\d", unique(data_bruto$cat_mp2), 
+delitos_ppp <- grep("\\d", unique(data_bruto$nueva_categoria), 
                     value = T
                     )
 data_bruto <- data_bruto %>% 
-  mutate(cat_mp2=substr(cat_mp2, 5,nchar(cat_mp2)))
+  mutate(nueva_categoria=substr(nueva_categoria, 5,nchar(nueva_categoria)))
 
 delitos_ppp <- substr(delitos_ppp, 5,nchar(delitos_ppp))
 
@@ -957,7 +992,7 @@ gr <- list()
 for (i in 1:length(delitos_ppp)) {
   gr[[i]] <- grafica_tendencia(
     datos=data_bruto %>% 
-      filter(cat_mp2 %in% delitos_ppp[i]), 
+      filter(nueva_categoria %in% delitos_ppp[i]), 
     fecha_inicio_global = fecha_inicio_global, 
     fecha_lim = fecha_lim, 
     delito = delitos_ppp[[i]]
@@ -965,7 +1000,7 @@ for (i in 1:length(delitos_ppp)) {
   
   
   ggsave(plot = gr[[i]], 
-         paste0("./graficas_incidencia_la_revancha/", delitos_ppp[i], ".png"), 
+         paste0("./graficas_incidencia_el_orgien/", delitos_ppp[i], ".png"), 
          width = 14, height = 7
          )
   
@@ -976,7 +1011,7 @@ tablas <- list()
 
 for (i in 1:length(delitos_ppp)) {
   tablas[[i]] <- data_bruto %>% 
-      filter(cat_mp2 %in% delitos_ppp[i]) %>% 
+      filter(nueva_categoria %in% delitos_ppp[i]) %>% 
   group_by(fecha_inicio) %>% 
   summarise(Total=n()) %>% ungroup() %>% 
   complete(fecha_inicio=seq.Date(as_date(fecha_inicio_global), 
@@ -996,7 +1031,7 @@ for (i in 1:length(delitos_ppp)) {
 
 tablas_promedios <- bind_rows(tablas)
 tablas_promedios %>% 
-  write.csv("./graficas_incidencia_la_revancha/tablas_promedios_delitos.csv", row.names = F)
+  write.csv("./graficas_incidencia_el_orgien/tablas_promedios_delitos.csv", row.names = F)
 
 #gráficas de barras
 delitos_ppp2 <- c( "ORPI", "Enriquecimiento ilicito", "Sabotaje", "Estupro")
@@ -1102,10 +1137,10 @@ tablas_especialies[[5]] <- data_bruto %>%
 gr_lesiones <- data_bruto %>% 
   filter(tipo_delito=="Lesiones dolosas") %>% 
   mutate(tipo=case_when(
-    grepl("BLANC", modalidad_delito) ~ "Arma blanca",
+    # grepl("BLANC", modalidad_delito) ~ "Arma blanca",
     grepl("FUEGO", modalidad_delito) ~ "Arma de fuego",
-    grepl("GOLPES", modalidad_delito) ~ "Golpes",
-    T ~ "Otros"
+    # grepl("GOLPES", modalidad_delito) ~ "Golpes",
+    T ~ "Otras lesiones dolosas"
   )) %>% 
   # filter(delito=="ROBO DE VEHÍCULO CON Y SIN VIOLENCIA", 
   #        #grepl("CON VIOLE|C/V", modalidad_delito),
@@ -1355,7 +1390,7 @@ tablas_especialies[[8]] <-  data_bruto %>%
 ####
 #violación conocido
 
-violacion_conocido <- read_excel("violacion_conocido.xlsx") %>% 
+violacion_conocido <- readxl::read_excel("violacion_conocido.xlsx") %>% 
   clean_names() %>% 
   mutate(relacion_victima_victimario=str_to_sentence(relacion_victima_victimario))
 
@@ -1646,7 +1681,8 @@ graf_efi_ministerial <- function(
   
   
   vinculaciones_ord <- ordenes %>% 
-    filter(cat_mp2 %in% delito_elegido) %>% 
+    #filter(cat_mp2 %in% delito_elegido) %>% 
+    filter(tipo_delito %in% delito_elegido) %>% 
     group_by(fecha_inicio=floor_date(fecha_cumplida, "1 year")) %>% 
     summarise(Vinculados=n())
   
@@ -1675,8 +1711,8 @@ graf_efi_ministerial <- function(
     ggplot(aes(fecha_inicio, Total, color=tipo)) +
     geom_point(alpha=.7) +
     geom_smooth(se=F, ) + theme_light() + tema_fgj +
-    geom_label(aes(label=comma(Total)), 
-               size=5, show.legend = F
+    geom_label_repel(aes(label=comma(Total)), 
+               size=5, show.legend = F, direction = "y"
                )+
     # geom_smooth(se=F, color=colores[2], method = "lm") +
     scale_x_date(date_labels = "%Y", date_breaks = "1 year") +
@@ -1687,7 +1723,8 @@ graf_efi_ministerial <- function(
     theme(axis.text.x = element_text(angle = 90)) +
     tema_fgj + scale_y_continuous(labels = comma) +
     theme(legend.position = "bottom") +
-    scale_color_manual(values = colores[7:9])
+    scale_color_manual(values = colores[7:9]) +
+    tema_ppp
   
   
   # gr_trend_sen <- carpetas %>% 
@@ -1832,7 +1869,7 @@ graf_efi_ministerial_traza <- function(
 
 
 gr_efi_hom <- graf_efi_ministerial(datos = data_bruto %>% 
-                       filter(cat_mp2=="Robo de vehículo"), 
+                       filter(nueva_categoria=="Robo de vehículo"), 
                      fecha_inicio_global = fecha_inicio_global, 
                      fecha_lim = fecha_lim, 
                      delito ="Robo de vehículo"
@@ -1840,7 +1877,7 @@ gr_efi_hom <- graf_efi_ministerial(datos = data_bruto %>%
                        )
 
 gr_efi_femi <- graf_efi_ministerial(datos = data_bruto %>% 
-                       filter(tipo_delito=="Feminicidio"), 
+                       filter(del_mp=="Feminicidio"), 
                      fecha_inicio_global = fecha_inicio_global, 
                      fecha_lim = fecha_lim, 
                      delito ="Feminicidio"
@@ -2077,7 +2114,7 @@ ordenes <- ordenes %>%
     delito_hom_uet %in% "COHECHO" ~ "Cohecho",
     T ~ str_to_sentence(delito_hom_uet) 
   ))
-#####
+##### Parte 3 ######
 #vamos a hacer gráficas especiales de cada uno de las categorias
 #graficas de "Muertes violentas"
 #línea 1: incidencia de homicidio doloso (incluir homicidio doloso de mujeres)
@@ -2085,7 +2122,7 @@ ordenes <- ordenes %>%
 tabla_muertes_violentas <- list()
 
 hom_fem <- data_bruto %>% 
-  filter(cat_mp2=="Muertes violentas") %>% 
+  filter(nueva_categoria=="Muertes violentas") %>% 
   mutate(tipo=case_when(
     grepl("FEM", modalidad_delito) ~ "Feminicidio", 
     T ~ "Homicidio doloso"
@@ -2098,9 +2135,11 @@ hom_fem <- data_bruto %>%
   ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
   summarise(Total=mean(Total)) %>% 
   ggplot(aes(fecha_inicio, Total, color=tipo)) +
-  geom_point(alpha=.7#, color=colores[1]
+  geom_point(alpha=.7,#, color=colores[1]
+             size=1.8
   ) +
-  geom_smooth(se=F#, color=colores[7]
+  geom_smooth(se=F,#, color=colores[7]
+              size=2, span=.1
   ) + theme_light() + tema_fgj +
   # geom_smooth(se=F, color=colores[2], method = "lm") +
   scale_x_date(date_labels = "%b\n%y", date_breaks = "6 month") +
@@ -2116,7 +2155,7 @@ hom_fem <- data_bruto %>%
 
 
 ggsave(plot = hom_fem, 
-       "./graficas_incidencia_la_revancha/especiales/Muertes violentas/gr_muertes_violentas_tipo.svg", width = 12, height = 6
+       "./graficas_incidencia_el_orgien/especiales/muertes_violentas/gr_fem_hom.svg", width = 12, height = 6
 )
 
 tabla_muertes_violentas[[1]] <- data_bruto %>% 
@@ -2139,7 +2178,7 @@ tabla_muertes_violentas[[1]] <- data_bruto %>%
 #arma blanca y otros (agrupar en otros los demás instrumentos de comisión) .
 #Esta gráfica no incluye feminicidios
 hom_arma <- data_bruto %>% 
-  filter(cat_mp2=="Muertes violentas", 
+  filter(nueva_categoria=="Muertes violentas", 
          del_mp=="Homicidio doloso") %>% 
   mutate(tipo=case_when(
     grepl("FUEGO", modalidad_delito) ~ "Arma de fuego", 
@@ -2155,12 +2194,14 @@ hom_arma <- data_bruto %>%
   ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
   summarise(Total=mean(Total)) %>% 
   ggplot(aes(fecha_inicio, Total, color=tipo)) +
-  geom_point(alpha=.7#, color=colores[1]
+  geom_point(alpha=.7,#, color=colores[1]
+             size=1.8
   ) +
-  geom_smooth(se=F#, color=colores[7]
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, size=2
   ) + theme_light() + tema_fgj +
   # geom_smooth(se=F, color=colores[2], method = "lm") +
-  scale_x_date(date_labels = "%b\n%y", date_breaks = "6 month") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "4 month") +
   labs(x="Fecha de inicio", y="Promedio diario", 
        color="",
        title = paste0("Promedio diario de carpetas por homicidio según clasificación"), 
@@ -2169,11 +2210,11 @@ hom_arma <- data_bruto %>%
   scale_color_manual(values = colores[3:1]) +
   theme(#axis.text.x = element_text(angle = 90), 
     legend.position = "bottom"
-  )
+  ) + tema_ppp
 
 
 ggsave(plot = hom_arma, 
-       "./graficas_incidencia_la_revancha/especiales/Muertes violentas/gr_hom_arma.svg", width = 12, height = 6
+       "./graficas_incidencia_el_orgien/especiales/muertes_violentas/gr_hom_arma.svg", width = 12, height = 6
 )
 
 tabla_muertes_violentas[[2]] <- data_bruto %>% 
@@ -2211,7 +2252,7 @@ data_homicidios <- data_homicidios %>% clean_names() %>%
   )) %>% 
   filter(tipo!="Desconocido")
 hom <- data_bruto %>% filter(delito=="HOMICIDIO DOLOSO", 
-                       grepl("HOM", modalidad_delito), 
+                       #grepl("HOM", modalidad_delito), 
                        fecha_inicio>="2022-01-01"
 ) %>% 
   left_join(data_homicidios %>% 
@@ -2230,24 +2271,26 @@ gr_hom_tipo <- hom %>%
   ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
   summarise(Total=mean(Total)) %>% 
   ggplot(aes(fecha_inicio, Total, color=tipo)) +
-  geom_point(alpha=.7#, color=colores[1]
+  geom_point(alpha=.7,#, color=colores[1]
+             size=1.8
   ) +
-  geom_smooth(se=F#, color=colores[7]
+  geom_smooth(se=F,#, color=colores[7]
+              size=2, span=.2
   ) + theme_light() + tema_fgj +
   # geom_smooth(se=F, color=colores[2], method = "lm") +
   scale_x_date(date_labels = "%b\n%y", date_breaks = "6 month") +
   labs(x="Fecha de inicio", y="Promedio diario", 
-       title = paste0("Promedio diario de carpetas por homicidio según clasificación"), 
+       title = paste0("Promedio diario de carpetas por homicidio y feminicidio según clasificación"), 
        subtitle = paste0("Desde ",  format(as_date("2022-01-01"), "%B de %Y"), " a ",
                          format(as_date(fecha_lim), "%B de %Y"))) +
   scale_color_manual(values = colores[1:2]) +
   theme(axis.text.x = element_text(angle = 90), 
         legend.position = "bottom"
-  )
+  ) + tema_ppp
 
 
 ggsave(plot = gr_hom_tipo, 
-       "./graficas_incidencia_la_revancha/especiales/Muertes violentas/gr_hom_clasificacion.svg", width = 12, height = 6
+       "./graficas_incidencia_el_orgien/especiales/Muertes violentas/gr_hom_clasificacion.svg", width = 12, height = 6
 )
 
 tabla_muertes_violentas[[3]] <- hom %>% 
@@ -2320,8 +2363,8 @@ graf_efi_ministerial <- function(
              fill=list(Total=0)
     ) %>% 
     ggplot(aes(fecha_inicio, Total, color=tipo)) +
-    geom_point(alpha=.7) +
-    geom_smooth(se=F, ) + theme_light() + tema_fgj +
+    geom_point(alpha=.7, size=1.5) +
+    geom_smooth(se=F, size=2) + theme_light() + tema_fgj +
     geom_label(aes(label=comma(Total)), 
                size=5, show.legend = F
     )+
@@ -2334,7 +2377,8 @@ graf_efi_ministerial <- function(
     theme(axis.text.x = element_text(angle = 90)) +
     tema_fgj + scale_y_continuous(labels = comma) +
     theme(legend.position = "bottom") +
-    scale_color_manual(values = colores[7:9])
+    scale_color_manual(values = colores[7:9]) +
+    tema_ppp
   
   
   # gr_trend_sen <- carpetas %>% 
@@ -2373,7 +2417,7 @@ graf_efi_ministerial <- function(
 }
 
 gr_efi_hom <- graf_efi_ministerial(datos = data_bruto %>% 
-                                     filter(cat_mp2=="Muertes violentas", 
+                                     filter(nueva_categoria=="Muertes violentas", 
                                             grepl("HOM", modalidad_delito)
                                             ), 
                                    fecha_inicio_global = fecha_inicio_global, 
@@ -2384,12 +2428,12 @@ gr_efi_hom <- graf_efi_ministerial(datos = data_bruto %>%
 
 
 ggsave(plot = gr_efi_hom, 
-       "./graficas_incidencia_la_revancha/especiales/Muertes violentas/gr_efi_hom.svg", width = 12, height = 6
+       "./graficas_incidencia_el_orgien/especiales/Muertes violentas/gr_efi_hom.svg", width = 12, height = 6
 )
 
 #eficiencia feminicidio
 gr_efi_fem <- graf_efi_ministerial(datos = data_bruto %>% 
-                                     filter(cat_mp2=="Muertes violentas", 
+                                     filter(nueva_categoria=="Muertes violentas", 
                                             grepl("FEM", modalidad_delito)
                                      ), 
                                    fecha_inicio_global = fecha_inicio_global, 
@@ -2400,7 +2444,7 @@ gr_efi_fem <- graf_efi_ministerial(datos = data_bruto %>%
 
 
 ggsave(plot = gr_efi_fem, 
-       "./graficas_incidencia_la_revancha/especiales/Muertes violentas/gr_efi_fem.svg", width = 12, height = 6
+       "./graficas_incidencia_el_orgien/especiales/Muertes violentas/gr_efi_fem.svg", width = 12, height = 6
 )
 
 #####
@@ -2582,7 +2626,7 @@ ggsave(plot = gr_efi_veh_encu,
 # línea 2: incidentia de secuestro exprés
 #promedio
 sec_tipo_prom <- data_bruto %>% 
-  filter(cat_mp2=="Secuestro"
+  filter(nueva_categoria=="Secuestro"
   ) %>% 
   mutate(tipo=case_when(
     grepl("EXPRE", modalidad_delito) ~ "Secuestro express", 
@@ -2597,9 +2641,11 @@ sec_tipo_prom <- data_bruto %>%
   ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
   summarise(Total=mean(Total)) %>% 
   ggplot(aes(fecha_inicio, Total, color=tipo)) +
-  geom_point(alpha=.7#, color=colores[1]
+  geom_point(alpha=.7,#, color=colores[1]
+             size=1.8
   ) +
-  geom_smooth(se=F#, color=colores[7]
+  geom_smooth(se=F,#, color=colores[7]
+              size=2, span=.1
   ) + theme_light() + tema_fgj +
   # geom_smooth(se=F, color=colores[2], method = "lm") +
   scale_x_date(date_labels = "%b\n%y", date_breaks = "6 month") +
@@ -2611,11 +2657,11 @@ sec_tipo_prom <- data_bruto %>%
   scale_color_manual(values = colores[2:1]) +
   theme(#axis.text.x = element_text(angle = 90), 
     legend.position = "bottom"
-  )
+  ) + tema_ppp
 
 
 ggsave(plot = sec_tipo_prom, 
-       "./graficas_incidencia_la_revancha/especiales/secuestro/sec_tipo_prom.svg", width = 12, height = 6
+       "./graficas_incidencia_el_orgien/especiales/secuestro/sec_tipo_prom.svg", width = 12, height = 6
 )
 
 tabla_secuestro <- list()
@@ -2683,7 +2729,7 @@ ggsave(plot = sec_tipo_abs,
 #### Eficiencia ministerial
 #Secuestro
 gr_efi_sec<- graf_efi_ministerial(datos = data_bruto %>% 
-                                         filter(cat_mp2=="Secuestro",
+                                         filter(nueva_categoria=="Secuestro",
                                                 del_mp=="Secuestro"
                                          ), 
                                        fecha_inicio_global = fecha_inicio_global, 
@@ -2694,12 +2740,12 @@ gr_efi_sec<- graf_efi_ministerial(datos = data_bruto %>%
 
 
 ggsave(plot = gr_efi_sec, 
-       "./graficas_incidencia_la_revancha/especiales/secuestro/gr_efi_sec.svg", width = 12, height = 6
+       "./graficas_incidencia_el_orgien/especiales/secuestro/gr_efi_sec.svg", width = 12, height = 6
 )
 
 #secuestro express
 gr_efi_sec_exp<- graf_efi_ministerial(datos = data_bruto %>% 
-                                    filter(cat_mp2=="Secuestro",
+                                    filter(nueva_categoria=="Secuestro",
                                            del_mp=="Secuestro express"
                                     ), 
                                   fecha_inicio_global = fecha_inicio_global, 
@@ -2710,7 +2756,7 @@ gr_efi_sec_exp<- graf_efi_ministerial(datos = data_bruto %>%
 
 
 ggsave(plot = gr_efi_sec_exp, 
-       "./graficas_incidencia_la_revancha/especiales/secuestro/gr_efi_sec_exp.svg", width = 12, height = 6
+       "./graficas_incidencia_el_orgien/especiales/secuestro/gr_efi_sec_exp.svg", width = 12, height = 6
 )
 
 
@@ -2721,7 +2767,7 @@ ggsave(plot = gr_efi_sec_exp,
 # Línea 2: violación equiparada
 
 violacion_tipo <- data_bruto %>% 
-  filter(cat_mp2=="Violencia sexual", 
+  filter(nueva_categoria=="Violencia sexual", 
          delito=="VIOLACIÓN"
   ) %>% 
   mutate(tipo=case_when(
@@ -2737,9 +2783,11 @@ violacion_tipo <- data_bruto %>%
   ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
   summarise(Total=mean(Total)) %>% 
   ggplot(aes(fecha_inicio, Total, color=tipo)) +
-  geom_point(alpha=.7#, color=colores[1]
+  geom_point(alpha=.7,#, color=colores[1]
+             size=1.8
   ) +
-  geom_smooth(se=F#, color=colores[7]
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, size=2
   ) + theme_light() + tema_fgj +
   # geom_smooth(se=F, color=colores[2], method = "lm") +
   scale_x_date(date_labels = "%b\n%y", date_breaks = "6 month") +
@@ -2836,7 +2884,7 @@ tablas_sexuales[[2]] <- data_bruto %>%
   mutate(nombre="violación delito")
 #violación conocido
 
-violacion_conocido <- read_excel("violacion_conocido.xlsx") %>% 
+violacion_conocido <- readxl::read_excel("violacion_conocido.xlsx") %>% 
   clean_names() %>% 
   mutate(relacion_victima_victimario=str_to_sentence(relacion_victima_victimario)) %>% 
   mutate(relacion_victima_victimario=case_when(
@@ -3339,16 +3387,16 @@ ggsave(plot = gr_efi_acoso_mayor_edad,
 # línea 1: incidencia lesiones dolosas
 # línea 2: incidencia de lesiones por arma de fuego
 gr_lesiones_tipo <- data_bruto %>% 
-  filter(cat_mp2=="Violencia física intencional", 
+  filter(nueva_categoria=="Lesiones dolososas", 
          #del_mp=="Acoso sexual", 
          #year(fecha_inicio)>=2022
   ) %>% 
-  mutate(tipo=del_mp) %>%
+  # mutate(tipo=del_mp) %>%
   
-  # mutate(tipo=case_when(
-  #   relacion_victima_victimario ~ "Desconocido", 
-  #   T ~ "Simple"
-  # )) %>%
+  mutate(tipo=case_when(
+    grepl("FUEGO", modalidad_delito) ~ "Por arma de fuego",
+    T ~ "Otras lesiones dolosas"
+  )) %>%
   group_by(fecha_inicio, tipo) %>% 
   summarise(Total=n()) %>% ungroup() %>% 
   complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
@@ -3358,12 +3406,14 @@ gr_lesiones_tipo <- data_bruto %>%
   ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
   summarise(Total=mean(Total)) %>% 
   ggplot(aes(fecha_inicio, Total, color=tipo)) +
-  geom_point(alpha=.7#, color=colores[1]
+  geom_point(alpha=.7,#, color=colores[1], 
+             size=1.8
   ) +
-  geom_smooth(se=F#, color=colores[7]
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, linewidth = 2,
   ) + theme_light() + tema_fgj +
   # geom_smooth(se=F, color=colores[2], method = "lm") +
-  scale_x_date(date_labels = "%b\n%y", date_breaks = "6 month") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "4 month") +
   labs(x="Fecha de inicio", y="Promedio diario", 
        color="",
        title = paste0("Promedio diario de carpetas lesiones por tipo"), 
@@ -3371,21 +3421,30 @@ gr_lesiones_tipo <- data_bruto %>%
                          format(as_date(fecha_lim), "%B de %Y"))) +
   scale_color_manual(values = colores[2:1]) +
   theme(#axis.text.x = element_text(angle = 90), 
-    legend.position = "bottom"
+    axis.text = element_text(size=17),
+    axis.text.y = element_text(face = "bold"), 
+    legend.position = "bottom", 
+    axis.title = element_text(size=20, face = "bold"), 
+    legend.text = element_text(size=18, face = "bold")
   )
 
 ggsave(plot = gr_lesiones_tipo, 
-       "./graficas_incidencia_la_revancha/especiales/violencia_intencional/gr_lesiones_tipo.svg", width = 12, height = 6
+       "./graficas_incidencia_el_orgien/especiales/lesiones_dolosas/gr_lesiones_tipo.svg", width = 12, height = 6
 )
 
-tabla_violencia_fisica <- list()
+tabla_lesiones_dolosas <- list()
 
-tabla_violencia_fisica[[1]] <-  data_bruto %>% 
-  filter(cat_mp2=="Violencia física intencional", 
+tabla_lesiones_dolosas[[1]] <-  data_bruto %>% 
+  filter(nueva_categoria=="Lesiones dolososas", 
          #del_mp=="Acoso sexual", 
          #year(fecha_inicio)>=2022
   ) %>% 
-  mutate(tipo=del_mp) %>%
+  # mutate(tipo=del_mp) %>%
+  
+  mutate(tipo=case_when(
+    grepl("FUEGO", modalidad_delito) ~ "Por arma de fuego",
+    T ~ "Otras lesiones dolosas"
+  )) %>% 
   
   # mutate(tipo=case_when(
   #   relacion_victima_victimario ~ "Desconocido", 
@@ -3400,8 +3459,8 @@ tabla_violencia_fisica[[1]] <-  data_bruto %>%
   ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 year"), tipo) %>% 
   summarise(Total=mean(Total))
 
-tabla_violencia_fisica[[1]] %>% 
-  write.csv("./graficas_incidencia_la_revancha/especiales/violencia_intencional/violencia_intencional.csv", 
+tabla_lesiones_dolosas[[1]] %>% 
+  write.csv("./graficas_incidencia_el_orgien/especiales/lesiones_dolosas/lesiones_dolosas.csv", 
             row.names=F
             )
 
@@ -3421,6 +3480,51 @@ gr_efi_lesiones <- graf_efi_ministerial(datos = data_bruto %>%
 
 ggsave(plot = gr_efi_lesiones, 
        "./graficas_incidencia_la_revancha/especiales/violencia_intencional/gr_efi_lesiones.svg", width = 12, height = 6
+)
+
+
+###
+#eficiencia narco
+gr_efi_narco_total <- graf_efi_ministerial(datos = data_bruto %>% 
+                                          filter(del_mp %in% c("Narcomenudeo posesión", "Narcomenudeo venta")
+                                          ), 
+                                        fecha_inicio_global = "2019-01-01", 
+                                        fecha_lim = fecha_lim, 
+                                        delito_elegido = c("Narcomenudeo posesión", "Narcomenudeo venta")
+                                        
+)
+
+ggsave(plot = gr_efi_narco_total, 
+       "./graficas_incidencia_el_orgien/especiales/narco/gr_efi_narco_total.svg", width = 12, height = 6
+)
+
+
+
+gr_efi_narco_posesion <- graf_efi_ministerial(datos = data_bruto %>% 
+                                             filter(del_mp %in% c("Narcomenudeo posesión")
+                                             ), 
+                                           fecha_inicio_global = "2019-01-01", 
+                                           fecha_lim = fecha_lim, 
+                                           delito_elegido = c("Narcomenudeo posesión")
+                                           
+)
+
+ggsave(plot = gr_efi_narco_posesion, 
+       "./graficas_incidencia_el_orgien/especiales/narco/gr_efi_narco_posesion.svg", width = 12, height = 6
+)
+
+
+gr_efi_narco_venta <- graf_efi_ministerial(datos = data_bruto %>% 
+                                                filter(del_mp %in% c("Narcomenudeo venta")
+                                                ), 
+                                              fecha_inicio_global = "2019-01-01", 
+                                              fecha_lim = fecha_lim, 
+                                              delito_elegido = c("Narcomenudeo venta")
+                                              
+)
+
+ggsave(plot = gr_efi_narco_venta, 
+       "./graficas_incidencia_el_orgien/especiales/narco/gr_efi_narco_venta.svg", width = 12, height = 6
 )
 
 #lesiones dolosas por arma de guefo
@@ -3490,6 +3594,7 @@ data_extorsion <- data_extorsion %>%
 
 
 gr_trend_ext <- data_extorsion %>% 
+  filter(tipo!="Otros") %>% 
   # filter(delito=="ROBO DE VEHÍCULO CON Y SIN VIOLENCIA", 
   #        #grepl("CON VIOLE|C/V", modalidad_delito),
   #        year(fecha_inicio) %in% c(2020:2025)) %>% 
@@ -3503,24 +3608,27 @@ gr_trend_ext <- data_extorsion %>%
   ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
   summarise(Total=mean(Total)) %>% drop_na(tipo) %>% 
   ggplot(aes(fecha_inicio, Total, color=tipo)) +
-  geom_point(alpha=.7#, color=colores[1]
+  geom_point(alpha=.7,#, color=colores[1]
+             size=1.8
   ) +
-  geom_smooth(se=F#, color=colores[7]
+  geom_smooth(se=F,#, color=colores[7]
+              size=2, span=.1
   ) + theme_light() + tema_fgj +
+  
   # geom_smooth(se=F, color=colores[2], method = "lm") +
   scale_x_date(date_labels = "%b-%y", date_breaks = "3 month") +
   labs(x="Fecha de inicio", y="Promedio diario", color="",
        title = paste0("Promedio diario de carpetas por extorsión según tipo"), 
        subtitle = paste0("Desde ",  format(as_date(fecha_inicio_global), "%B de %Y"), " a ",
                          format(as_date(fecha_lim), "%B de %Y"))) +
-  scale_color_manual(values = colores[3:1]) +
+  scale_color_manual(values = colores[2:1]) +
   theme(axis.text.x = element_text(angle = 90), 
         legend.position = "bottom"
-  )
+  ) + tema_ppp
 
 
 ggsave(plot = gr_trend_ext, 
-       "./graficas_incidencia_la_revancha/especiales/extorsion/gr_trend_ext.svg", width = 12, height = 6
+       "./graficas_incidencia_el_orgien/especiales/extorsion/gr_trend_ext.svg", width = 12, height = 6
 )
 
 tablas_extorsion <- list()
@@ -3538,10 +3646,11 @@ tablas_extorsion[[1]] <- data_extorsion %>%
            tipo=unique(.$tipo_extorsion),
            fill=list(Total=0)
   ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 year"), tipo) %>% 
-  summarise(Total=mean(Total)) %>% drop_na(tipo)
+  summarise(Total_carpetas=sum(Total),
+    promedio=mean(Total)) %>% drop_na(tipo)
 
 tablas_extorsion[[1]]  %>% 
-  write.csv("./graficas_incidencia_la_revancha/especiales/extorsion/tablas_extorsion.csv", 
+  write.csv("./graficas_incidencia_el_orgien/especiales/extorsion/tablas_extorsion.csv", 
             row.names=F
             )
 
@@ -3549,7 +3658,7 @@ tablas_extorsion[[1]]  %>%
 #####
 #Robo a casa habitación
 gr_casa_tipo <- data_bruto %>% 
-  filter(cat_mp2=="Robo a casa habitación", 
+  filter(nueva_categoria=="Robo a casa habitación", 
          #del_mp=="Acoso sexual", 
          #year(fecha_inicio)>=2022
   ) %>% 
@@ -3571,29 +3680,31 @@ gr_casa_tipo <- data_bruto %>%
   ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
   summarise(Total=mean(Total)) %>% 
   ggplot(aes(fecha_inicio, Total, color=tipo)) +
-  geom_point(alpha=.7#, color=colores[1]
+  geom_point(alpha=.7,#, color=colores[1]
+             size=1.8
   ) +
-  geom_smooth(se=F#, color=colores[7]
+  geom_smooth(se=F,#, color=colores[7]
+              size=2, span=.1
   ) + theme_light() + tema_fgj +
   # geom_smooth(se=F, color=colores[2], method = "lm") +
   scale_x_date(date_labels = "%b\n%y", date_breaks = "6 month") +
   labs(x="Fecha de inicio", y="Promedio diario", 
        color="",
-       title = paste0("Promedio diario de carpetas lesiones por tipo"), 
+       title = paste0("Promedio diario de carpetas por robo a casa habitación por tipo"), 
        subtitle = paste0("Desde ",  format(as_date("2019-01-01"), "%B de %Y"), " a ",
                          format(as_date(fecha_lim), "%B de %Y"))) +
   scale_color_manual(values = colores[2:1]) +
   theme(#axis.text.x = element_text(angle = 90), 
     legend.position = "bottom"
-  )
+  ) + tema_ppp
 
 ggsave(plot = gr_casa_tipo, 
-       "./graficas_incidencia_la_revancha/especiales/robo_casa/gr_casa_tipo.svg", width = 12, height = 6
+       "./graficas_incidencia_el_orgien/especiales/robo_casa/gr_casa_tipo.svg", width = 12, height = 6
 )
 
 
-data_bruto %>% 
-  filter(cat_mp2=="Robo a casa habitación", 
+  data_bruto %>% 
+  filter(nueva_categoria=="Robo a casa habitación", 
          #del_mp=="Acoso sexual", 
          #year(fecha_inicio)>=2022
   ) %>% 
@@ -3614,7 +3725,7 @@ data_bruto %>%
            fill=list(Total=0)
   ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 year"), tipo) %>% 
   summarise(Total=mean(Total)) %>% 
-  write.csv("./graficas_incidencia_la_revancha/especiales/robo_casa/tablas_robo_casa.csv", 
+  write.csv("./graficas_incidencia_el_orgien/especiales/robo_casa/tablas_robo_casa.csv", 
             row.names = F
             )
 ###eficiencia ministerial
@@ -4557,4 +4668,2042 @@ gr_convivencia_tipo <- data_bruto %>%
 
 ggsave(plot = gr_convivencia_tipo, 
        "./graficas_incidencia_la_revancha/especiales/convivencia/gr_convivencia_tipo.svg", width = 12, height = 6
+)
+
+
+#####
+#violación en personas adultas
+
+gr_violaciones_adultos <- data_bruto %>% 
+  filter(nueva_categoria=="Violación en personas adultas", 
+         #del_mp=="Acoso sexual", 
+         #year(fecha_inicio)>=2022
+  ) %>% 
+   mutate(tipo=del_mp) %>%
+  
+  mutate(tipo=case_when(
+    grepl("qui", del_mp) ~ "Violación equiparada",
+    T ~ "Violación simple"
+  )) %>%
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7,#, color=colores[1], 
+             size=1.8
+  ) +
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, linewidth = 2,
+  ) + theme_light() + tema_fgj +
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "4 month") +
+  labs(x="Fecha de inicio", y="Promedio diario", 
+       color="",
+       title = paste0("Promedio diario de carpetas violaciones a personas adultas por tipo"), 
+       subtitle = paste0("Desde ",  format(as_date("2019-01-01"), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  scale_color_manual(values = colores[2:1]) +
+  tema_ppp
+
+
+ggsave(plot = gr_violaciones_adultos, 
+       "./graficas_incidencia_el_orgien/especiales/violacion_adultos/gr_violaciones_adultos.svg", width = 12, height = 6
+)
+
+
+###
+#violación por imputado conocido
+gr_violaciones_adultos <- data_bruto %>% 
+  filter(nueva_categoria=="Violación en personas adultas", 
+         #del_mp=="Acoso sexual", 
+         #year(fecha_inicio)>=2022
+  ) %>% 
+  mutate(tipo=del_mp) %>%
+  
+  mutate(tipo=case_when(
+    grepl("qui", del_mp) ~ "Violación equiparada",
+    T ~ "Violación simple"
+  )) %>%
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7,#, color=colores[1], 
+             size=1.8
+  ) +
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, linewidth = 2,
+  ) + theme_light() + tema_fgj +
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "4 month") +
+  labs(x="Fecha de inicio", y="Promedio diario", 
+       color="",
+       title = paste0("Promedio diario de carpetas violaciones a personas adultas por tipo"), 
+       subtitle = paste0("Desde ",  format(as_date("2019-01-01"), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  scale_color_manual(values = colores[2:1]) +
+  tema_ppp
+
+
+ggsave(plot = gr_violaciones_adultos, 
+       "./graficas_incidencia_el_orgien/especiales/violacion_adultos/gr_violaciones_adultos.svg", width = 12, height = 6
+)
+
+
+data_bruto %>% 
+  filter(nueva_categoria=="Violación en personas adultas", 
+         #del_mp=="Acoso sexual", 
+         #year(fecha_inicio)>=2022
+  ) %>% 
+  mutate(tipo=del_mp) %>%
+  
+  mutate(tipo=case_when(
+    grepl("qui", del_mp) ~ "Violación equiparada",
+    T ~ "Violación simple"
+  )) %>%
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 year"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  write.csv("./graficas_incidencia_el_orgien/especiales/violacion_adultos/violacion_adultos_tipo.csv", 
+            row.names = F)
+
+#####
+#Otros delitos sexuales contra adultos
+gr_otros_sexuales_adultos <- data_bruto %>% 
+  filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria=="Otros delitos de violencia sexual contra adultos", 
+         #del_mp=="Acoso sexual", 
+         #year(fecha_inicio)>=2022
+  ) %>% 
+  mutate(tipo=del_mp) %>%
+  
+  # mutate(tipo=case_when(
+  #   grepl("qui", del_mp) ~ "Violación equiparada",
+  #   T ~ "Violación simple"
+  # )) %>%
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2020-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7,#, color=colores[1], 
+             size=1.8
+  ) +
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, linewidth = 2,
+  ) + theme_light() + tema_fgj +
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "4 month") +
+  labs(x="Fecha de inicio", y="Promedio diario", 
+       color="",
+       title = paste0("Promedio diario de carpetas delitos sexuales (distintos a violación) a personas adultas por tipo"), 
+       subtitle = paste0("Desde ",  format(as_date("2019-01-01"), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  scale_color_manual(values = colores[3:1]) +
+  tema_ppp
+
+
+ggsave(plot = gr_otros_sexuales_adultos, 
+       "./graficas_incidencia_el_orgien/especiales/violacion_adultos/gr_otros_sexuales_adultos.svg",
+       width = 12, height = 6
+)
+
+efi_sec_total<- graf_efi_ministerial(
+  datos = data_bruto  %>% 
+    filter(del_mp %in% c("Secuestro express", "Secuestro")
+    ), 
+  fecha_inicio_global = fecha_inicio_global, 
+  fecha_lim = fecha_lim, 
+  delito =c("Secuestro","Secuestro express")
+  
+  
+  
+)
+
+ggsave(plot = efi_sec_total, 
+       "./graficas_incidencia_el_orgien/especiales/secuestro/efi_sec_total.svg",
+       width = 12, height = 6
+)
+
+
+data_bruto %>% 
+  filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria=="Otros delitos de violencia sexual contra adultos", 
+         #del_mp=="Acoso sexual", 
+         #year(fecha_inicio)>=2022
+  ) %>% 
+  mutate(tipo=del_mp)  %>%
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2020-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 year"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  write.csv("./graficas_incidencia_el_orgien/especiales/violacion_otros_sex_adultos/otros_sexuales_adultos.csv", 
+            row.names = F)
+
+
+
+gr_violacion_relacion_adultas <- data_bruto %>% 
+  filter(nueva_categoria=="Violación en personas adultas", 
+         # delito=="VIOLACIÓN", 
+         year(fecha_inicio)>=2022
+  ) %>% left_join(violacion_conocido, by="id_ap") %>% drop_na(relacion_victima_victimario) %>% 
+  mutate(relacion_victima_victimario=case_when(
+    relacion_victima_victimario %in% "Desconocido" ~ "Desconocido", 
+    T ~ "Conocido"
+  )) %>% 
+  mutate(tipo=relacion_victima_victimario) %>% drop_na(tipo) %>% 
+  # mutate(tipo=case_when(
+  #   relacion_victima_victimario ~ "Desconocido", 
+  #   T ~ "Simple"
+  # )) %>%
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2022-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7,#, color=colores[1]
+             size=1.8
+  ) +
+  geom_smooth(se=F,#, color=colores[7]
+              span=.2, size=2
+  ) + theme_light() + tema_fgj +
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "4 month") +
+  labs(x="Fecha de inicio", y="Promedio diario", 
+       color="",
+       title = paste0("Promedio diario de carpetas de violación de personas adultas por tipo de relación"), 
+       subtitle = paste0("Desde ",  format(as_date("2022-01-01"), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  scale_color_manual(values = colores[2:1]) +
+  theme(#axis.text.x = element_text(angle = 90), 
+    legend.position = "bottom"
+  ) +
+  tema_ppp
+
+ggsave(plot = gr_violacion_relacion_adultas, 
+       "./graficas_incidencia_el_orgien/especiales/violacion_adultos/gr_violacion_relacion_adultas.svg", width = 12, height = 6
+)
+
+
+
+data_bruto %>% 
+  filter(nueva_categoria=="Violación en personas adultas", 
+         # delito=="VIOLACIÓN", 
+         year(fecha_inicio)>=2022
+  ) %>% left_join(violacion_conocido, by="id_ap") %>% 
+  mutate(tipo=relacion_victima_victimario) %>% drop_na(tipo) %>% 
+  # mutate(tipo=case_when(
+  #   relacion_victima_victimario ~ "Desconocido", 
+  #   T ~ "Simple"
+  # )) %>%
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2022-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 year"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  mutate(nombre="violacion conocido") %>% 
+  write.csv("./graficas_incidencia_el_orgien/especiales/violacion_otros_sex_adultos/violacion_adultos_conocidos.csv", 
+            row.names = F)
+
+#v
+
+#####
+#trata de personas
+
+gr_trata <- data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria=="rata de personas", 
+         #del_mp=="Acoso sexual", 
+         #year(fecha_inicio)>=2022
+  ) %>% 
+  mutate(tipo=str_to_sentence(str_wrap(modalidad_delito, 28))) %>%
+  
+  # mutate(tipo=case_when(
+  #   grepl("qui", del_mp) ~ "Violación equiparada",
+  #   T ~ "Violación simple"
+  # )) %>%
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2020-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7,#, color=colores[1], 
+             size=1.8
+  ) +
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, linewidth = 2,
+  ) + theme_light() + tema_fgj +
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "4 month") +
+  labs(x="Fecha de inicio", y="Promedio diario", 
+       color="",
+       title = paste0("Promedio diario de carpetas relacionaos a trata de personas por tipo"), 
+       subtitle = paste0("Desde ",  format(as_date("2020-01-01"), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  scale_color_manual(values = colores[3:1]) +
+  tema_ppp
+
+
+ggsave(plot = gr_trata, 
+       "./graficas_incidencia_el_orgien/especiales/trata_de_personas/gr_trata.svg",
+       width = 12, height = 6
+)
+
+
+data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria=="rata de personas", 
+         #del_mp=="Acoso sexual", 
+         #year(fecha_inicio)>=2022
+  ) %>% 
+  mutate(tipo=str_to_sentence(str_wrap(modalidad_delito, 28))) %>%
+  
+  # mutate(tipo=case_when(
+  #   grepl("qui", del_mp) ~ "Violación equiparada",
+  #   T ~ "Violación simple"
+  # )) %>%
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2020-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 year"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  write.csv("./graficas_incidencia_el_orgien/especiales/trata_de_personas/trata_de_personas.csv", 
+            row.names = F)
+
+
+#####
+#violencia familiar
+
+gr_violencia_familiar_tipo <- data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria=="Violencia familiar", 
+         #del_mp=="Acoso sexual", 
+         #year(fecha_inicio)>=2022
+  ) %>% 
+  mutate(tipo=del_mp) %>%
+  
+  # mutate(tipo=case_when(
+  #   grepl("qui", del_mp) ~ "Violación equiparada",
+  #   T ~ "Violación simple"
+  # )) %>%
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2020-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7,#, color=colores[1], 
+             size=1.8
+  ) +
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, linewidth = 2,
+  ) + theme_light() + tema_fgj +
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "4 month") +
+  labs(x="Fecha de inicio", y="Promedio diario", 
+       color="",
+       title = paste0("Promedio diario de carpetas por violencia familiar por tipo"), 
+       subtitle = paste0("Desde ",  format(as_date("2020-01-01"), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  scale_color_manual(values = colores[3:1]) +
+  tema_ppp
+
+
+ggsave(plot = gr_trata, 
+       "./graficas_incidencia_el_orgien/especiales/trata_de_personas/gr_trata.png",
+       width = 12, height = 6
+)
+
+
+data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria=="rata de personas", 
+         #del_mp=="Acoso sexual", 
+         #year(fecha_inicio)>=2022
+  ) %>% 
+  mutate(tipo=str_to_sentence(str_wrap(modalidad_delito, 28))) %>%
+  
+  # mutate(tipo=case_when(
+  #   grepl("qui", del_mp) ~ "Violación equiparada",
+  #   T ~ "Violación simple"
+  # )) %>%
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2020-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 year"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  write.csv("./graficas_incidencia_el_orgien/especiales/trata_de_personas/trata_de_personas.csv", 
+            row.names = F)
+
+
+#####
+#delitos contra NNA
+gr_nna_tipo <- data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria=="Delitos contra NNA", 
+         !grepl("RETENCI|AUXI", modalidad_delito)
+         #del_mp=="Acoso sexual", 
+         #year(fecha_inicio)>=2022
+  ) %>% 
+  mutate(tipo=case_when(
+           grepl("VIOLA|SEXUAL", modalidad_delito) ~ "Violencia sexual",
+         T ~ str_to_sentence(modalidad_delito)
+           ) ) %>%
+  mutate(tipo=str_wrap(tipo, 28)) %>% 
+  
+  # mutate(tipo=case_when(
+  #   grepl("qui", del_mp) ~ "Violación equiparada",
+  #   T ~ "Violación simple"
+  # )) %>%
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7,#, color=colores[1], 
+             size=1.8
+  ) +
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, linewidth = 2,
+  ) + theme_light() + tema_fgj +
+  facet_wrap(.~tipo, scales = "free", nrow = 2) +
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "6 month") +
+  labs(x="Fecha de inicio", y="Promedio diario", 
+       color="",
+       title = paste0("Promedio diario de carpetas por contra menores de edad por tipo"), 
+       subtitle = paste0("Desde ",  format(as_date("2020-01-01"), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  scale_color_manual(values = colores[6:1]) +
+  tema_ppp +
+  theme(axis.text.x = element_text(size = 16))
+
+
+ggsave(plot = gr_nna_tipo, 
+       "./graficas_incidencia_el_orgien/especiales/delitos_nna/gr_nna_tipo.svg",
+       width = 12, height = 6
+)
+
+#vamos a hacer un ciclo para crear las 5 gráficas 
+data_nna <-  data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria=="Delitos contra NNA", 
+         #del_mp=="Acoso sexual", 
+         #year(fecha_inicio)>=2022
+  ) %>% 
+  mutate(tipo=case_when(
+    grepl("VIOLA|SEXUAL", modalidad_delito) ~ "Violencia sexual",
+    T ~ str_to_sentence(modalidad_delito)
+  ) ) 
+
+
+delitos_nna <- sort(unique(data_nna$tipo))
+
+for (i in 1:length(delitos_nna)) {
+  gr_nna_tipo <- data_nna %>% 
+    # filter(year(fecha_inicio)>=2020) %>% 
+    filter(tipo==delitos_nna[i]) %>%
+    mutate(tipo=str_wrap(tipo, 28)) %>% 
+    group_by(fecha_inicio, tipo) %>% 
+    summarise(Total=n()) %>% ungroup() %>% 
+    complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                   as_date(fecha_lim), "1 day"), 
+             tipo=unique(.$tipo),
+             fill=list(Total=0)
+    ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+    summarise(Total=mean(Total)) %>% 
+    ggplot(aes(fecha_inicio, Total, color=tipo)) +
+    geom_point(alpha=.7,#, color=colores[1], 
+               size=1.8
+    ) +
+    geom_smooth(se=F,#, color=colores[7]
+                span=.1, linewidth = 2,
+    ) + theme_light() + tema_fgj +
+    # facet_wrap(.~tipo, scales = "free", nrow = 2) +
+    # geom_smooth(se=F, color=colores[2], method = "lm") +
+    scale_x_date(date_labels = "%b\n%y", date_breaks = "6 month") +
+    labs(x="Fecha de inicio", y="Promedio diario", 
+         color="",
+         title = paste0("Promedio diario de carpetas por ", delitos_nna[i]), 
+         subtitle = paste0("Desde ",  format(as_date("2019-01-01"), "%B de %Y"), " a ",
+                           format(as_date(fecha_lim), "%B de %Y"))) +
+    scale_color_manual(values = colores[2]) +
+    tema_ppp +
+    theme(axis.text.x = element_text(size = 16))
+  
+  
+  ggsave(plot = gr_nna_tipo, 
+         paste0("./graficas_incidencia_el_orgien/especiales/delitos_nna/", delitos_nna[i], "_090225.svg"),
+         width = 12, height = 6
+  )
+}
+
+
+gr_omision <- data_nna %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(tipo==delitos_nna[2]) %>%
+  mutate(tipo=str_wrap(tipo, 28)) %>% 
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2023-10-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7,#, color=colores[1], 
+             size=1.8
+  ) +
+  geom_smooth(se=F,#, color=colores[7]
+              span=.35, linewidth = 2,
+  ) + theme_light() + tema_fgj +
+  # facet_wrap(.~tipo, scales = "free", nrow = 2) +
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "6 month") +
+  labs(x="Fecha de inicio", y="Promedio diario", 
+       color="",
+       title = paste0("Promedio diario de carpetas por ", delitos_nna[2]), 
+       subtitle = paste0("Desde ",  format(as_date("2023-10-01"), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  scale_color_manual(values = colores[2]) +
+  tema_ppp +
+  theme(axis.text.x = element_text(size = 16))
+
+
+ggsave(plot = gr_omision, 
+       paste0("./graficas_incidencia_el_orgien/especiales/delitos_nna/", delitos_nna[2], "_090225.svg"),
+       width = 12, height = 6
+)
+
+data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria=="Delitos contra NNA", 
+         #del_mp=="Acoso sexual", 
+         #year(fecha_inicio)>=2022
+  ) %>% 
+  mutate(tipo=case_when(
+    grepl("VIOLA|SEXUAL", modalidad_delito) ~ "Violencia sexual",
+    T ~ str_to_sentence(modalidad_delito)
+  ) ) %>%
+  mutate(tipo=str_wrap(tipo, 18)) %>% 
+  
+  # mutate(tipo=case_when(
+  #   grepl("qui", del_mp) ~ "Violación equiparada",
+  #   T ~ "Violación simple"
+  # )) %>%
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2020-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 year"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  write.csv("./graficas_incidencia_el_orgien/especiales/delitos_nna/delitos_nna.csv", 
+            row.names = F)
+
+
+#####
+#robo a negocio
+# Aquí debe de haber 4 gráficas: 
+#   Robo a bancos y valores c/v y s/v
+# Robo a negocio c/v y s/v
+# Robo a repartidor c/v y s/v
+# Robo a transportista c/v y s/v
+
+gr_banco <- data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria=="Robo a negocio", 
+         grepl("BANCA", modalidad_delito)
+         #del_mp=="Acoso sexual", 
+         #year(fecha_inicio)>=2022
+  ) %>% 
+  mutate(tipo=case_when(
+    grepl("CON VIOL|C/V", modalidad_delito) ~ "Con violencia",
+    T ~ "Sin violencia"
+  ) ) %>%
+  # mutate(tipo=str_wrap(tipo, 18)) %>% 
+  
+  # mutate(tipo=case_when(
+  #   grepl("qui", del_mp) ~ "Violación equiparada",
+  #   T ~ "Violación simple"
+  # )) %>%
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7,#, color=colores[1], 
+             size=1.8
+  ) +
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, linewidth = 2,
+  ) + theme_light() + tema_fgj +
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "4 month") +
+  labs(x="Fecha de inicio", y="Promedio diario", 
+       color="",
+       title = paste0("Promedio diario de carpetas por robo a banco por tipo"), 
+       subtitle = paste0("Desde ",  format(as_date("2020-01-01"), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  scale_color_manual(values = colores[7:8]) +
+  tema_ppp
+
+
+ggsave(plot = gr_banco, 
+       "./graficas_incidencia_el_orgien/especiales/robo_negocio/gr_banco.svg",
+       width = 12, height = 6
+)
+
+tablas_robo_negocio <- list()
+
+tablas_robo_negocio[[1]] <-  data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria=="Robo a negocio", 
+         grepl("BANCA|VALORES", modalidad_delito)
+  ) %>% 
+  mutate(tipo=case_when(
+    grepl("BANCA|VALORES", modalidad_delito) ~ "Con violencia",
+    T ~ "Sin violencia"
+  ) ) %>%
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2020-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 year"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  mutate(nombre="Robo a banco")
+
+
+#robo a negocio
+gr_negocio_tipo <- data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria=="Robo a negocio", 
+         del_mp %in% c("Robo a negocio c/v", "Robo a negocio s/v")
+  ) %>% 
+  mutate(tipo=del_mp) %>%
+  # mutate(tipo=str_wrap(tipo, 18)) %>% 
+  
+  # mutate(tipo=case_when(
+  #   grepl("qui", del_mp) ~ "Violación equiparada",
+  #   T ~ "Violación simple"
+  # )) %>%
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7,#, color=colores[1], 
+             size=1.8
+  ) +
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, linewidth = 2,
+  ) + theme_light() + tema_fgj +
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "4 month") +
+  labs(x="Fecha de inicio", y="Promedio diario", 
+       color="",
+       title = paste0("Promedio diario de carpetas por robo a negocio por tipo"), 
+       subtitle = paste0("Desde ",  format(as_date("2020-01-01"), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  scale_color_manual(values = colores[7:8]) +
+  tema_ppp
+
+
+ggsave(plot = gr_negocio_tipo, 
+       "./graficas_incidencia_el_orgien/especiales/robo_negocio/gr_negocio_tipo.svg",
+       width = 12, height = 6
+)
+
+
+
+tablas_robo_negocio[[2]] <-  data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria=="Robo a negocio", 
+         del_mp %in% c("Robo a negocio c/v", "Robo a negocio s/v")
+  ) %>% 
+  mutate(tipo=del_mp) %>% 
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 year"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  mutate(nombre="Robo a negocio")
+
+###
+#robo a repartidos
+gr_repartidor_tipo <- data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria=="Robo a negocio", 
+         del_mp %in% c("Robo a repartidor c/v", "Robo a repartidor s/v")
+  ) %>% 
+  mutate(tipo=del_mp) %>%
+  # mutate(tipo=str_wrap(tipo, 18)) %>% 
+  
+  # mutate(tipo=case_when(
+  #   grepl("qui", del_mp) ~ "Violación equiparada",
+  #   T ~ "Violación simple"
+  # )) %>%
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7,#, color=colores[1], 
+             size=1.8
+  ) +
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, linewidth = 2,
+  ) + theme_light() + tema_fgj +
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "4 month") +
+  labs(x="Fecha de inicio", y="Promedio diario", 
+       color="",
+       title = paste0("Promedio diario de carpetas por robo a repartidor por tipo"), 
+       subtitle = paste0("Desde ",  format(as_date("2020-01-01"), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  scale_color_manual(values = colores[7:8]) +
+  tema_ppp
+
+
+ggsave(plot = gr_repartidor_tipo, 
+       "./graficas_incidencia_el_orgien/especiales/robo_negocio/gr_repartidor_tipo.svg",
+       width = 12, height = 6
+)
+
+
+
+tablas_robo_negocio[[3]] <-  data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria=="Robo a negocio", 
+         del_mp %in% c("Robo a repartidor c/v", "Robo a repartidor s/v")
+  ) %>% 
+  mutate(tipo=del_mp) %>% 
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 year"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  mutate(nombre="Robo a repartidor")
+
+#robo a transportista
+gr_transportista_tipo <- data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria=="Robo a negocio", 
+         grepl("tista", del_mp)
+         #del_mp %in% c("Robo a repartidor c/v", "Robo a repartidor s/v")
+  ) %>% 
+  mutate(tipo=del_mp) %>%
+  # mutate(tipo=str_wrap(tipo, 18)) %>% 
+  
+  # mutate(tipo=case_when(
+  #   grepl("qui", del_mp) ~ "Violación equiparada",
+  #   T ~ "Violación simple"
+  # )) %>%
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7,#, color=colores[1], 
+             size=1.8
+  ) +
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, linewidth = 2,
+  ) + theme_light() + tema_fgj +
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "4 month") +
+  labs(x="Fecha de inicio", y="Promedio diario", 
+       color="",
+       title = paste0("Promedio diario de carpetas por robo a transportista por tipo"), 
+       subtitle = paste0("Desde ",  format(as_date("2020-01-01"), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  scale_color_manual(values = colores[7:8]) +
+  tema_ppp
+
+
+ggsave(plot = gr_transportista_tipo, 
+       "./graficas_incidencia_el_orgien/especiales/robo_negocio/gr_transportista_tipo.svg",
+       width = 12, height = 6
+)
+
+
+
+tablas_robo_negocio[[4]] <-   data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria=="Robo a negocio", 
+         grepl("TRANSPOR", modalidad_delito)
+  ) %>% 
+  mutate(tipo=del_mp) %>% 
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 year"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  mutate(nombre="Robo a transportista")
+
+bind_rows(tablas_robo_negocio) %>% 
+  write.csv("./graficas_incidencia_el_orgien/especiales/robo_negocio/tablas_robo_negocio.csv")
+
+
+#####
+#Muertes, lesiones y daños no intencionales
+gr_muertes_daños <- data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria=="Muertes, lesiones y daños no intencionales" , 
+         #del_mp %in% c("Robo a repartidor c/v", "Robo a repartidor s/v")
+  ) %>% 
+  
+  mutate(del_mp=case_when(
+    grepl("Hom", del_mp) ~ "Homicidio culposo",
+      T ~ del_mp
+  )) %>% 
+  mutate(tipo=del_mp) %>%
+  # mutate(tipo=str_wrap(tipo, 18)) %>% 
+  
+  # mutate(tipo=case_when(
+  #   grepl("qui", del_mp) ~ "Violación equiparada",
+  #   T ~ "Violación simple"
+  # )) %>%
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7,#, color=colores[1], 
+             size=1.8
+  ) +
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, linewidth = 2,
+  ) + theme_light() + tema_fgj +
+  facet_wrap(.~tipo, scales = "free_y", nrow = 2) +
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "6 month") +
+  labs(x="Fecha de inicio", y="Promedio diario", 
+       color="",
+       title = paste0("Promedio diario de carpetas por muertes, lesiones y daño no intencionales"), 
+       subtitle = paste0("Desde ",  format(as_date("2020-01-01"), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  scale_color_manual(values = colores[3:1]) +
+  tema_ppp
+
+
+ggsave(plot = gr_muertes_daños, 
+       "./graficas_incidencia_el_orgien/especiales/muertes_lesiones_daños/gr_muertes.svg",
+       width = 12, height = 6
+)
+
+
+
+data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria=="Muertes, lesiones y daños no intencionales" , 
+         #del_mp %in% c("Robo a repartidor c/v", "Robo a repartidor s/v")
+  ) %>% 
+  
+  mutate(del_mp=case_when(
+    grepl("Hom", del_mp) ~ "Homicidio culposo",
+    T ~ del_mp
+  )) %>% 
+  mutate(tipo=del_mp) %>% 
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 year"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  write.csv("./graficas_incidencia_el_orgien/especiales/muertes_lesiones_daños/tablas_muertes_daños.csv")
+
+#####
+#muertes violentas
+gr_hom_femi <- data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria=="Muertes violentas" , 
+         #del_mp %in% c("Robo a repartidor c/v", "Robo a repartidor s/v")
+  ) %>% 
+  mutate(tipo=del_mp) %>%
+  # mutate(tipo=str_wrap(tipo, 18)) %>% 
+  
+  # mutate(tipo=case_when(
+  #   grepl("qui", del_mp) ~ "Violación equiparada",
+  #   T ~ "Violación simple"
+  # )) %>%
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7,#, color=colores[1], 
+             size=1.8
+  ) +
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, linewidth = 2,
+  ) + theme_light() + tema_fgj +
+  # facet_wrap(.~tipo, scales = "free_y", nrow = 2) +
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "6 month") +
+  labs(x="Fecha de inicio", y="Promedio diario", 
+       color="",
+       title = paste0("Promedio diario de carpetas por homcidio y feminicidio"), 
+       subtitle = paste0("Desde ",  format(as_date("2020-01-01"), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  scale_color_manual(values = colores[2:1]) +
+  tema_ppp
+
+
+ggsave(plot = gr_hom_femi, 
+       "./graficas_incidencia_el_orgien/especiales/muertes_violentas/gr_hom_femi.svg",
+       width = 12, height = 6
+)
+
+#####
+#robo de vehículo
+#robo de placas
+
+gr_robo_placa <- data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria=="Robo de vehículos y autopartes" , 
+         modalidad_delito=="ROBO DE PLACA DE AUTOMOVIL"
+         #del_mp %in% c("Robo a repartidor c/v", "Robo a repartidor s/v")
+  ) %>% mutate(tipo=str_to_sentence(modalidad_delito)) %>% 
+
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7,#, color=colores[1], 
+             size=1.8
+  ) +
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, linewidth = 2,
+  ) + theme_light() + tema_fgj +
+  # facet_wrap(.~tipo, scales = "free_y", nrow = 2) +
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "6 month") +
+  labs(x="Fecha de inicio", y="Promedio diario", 
+       color="",
+       title = paste0("Promedio diario de carpetas por robo de placa"), 
+       subtitle = paste0("Desde ",  format(as_date("2020-01-01"), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  scale_color_manual(values = colores[4:1]) +
+  tema_ppp
+
+
+ggsave(plot = gr_robo_placa, 
+       "./graficas_incidencia_el_orgien/especiales/robo_vehiculo/gr_robo_placa.svg",
+       width = 12, height = 6
+)
+
+#robo de autopartes
+gr_robo_coche_partes <- data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria=="Robo de vehículos y autopartes" , 
+         del_mp=="Robo de accesorios de auto"
+         #del_mp %in% c("Robo a repartidor c/v", "Robo a repartidor s/v")
+  ) %>% mutate(tipo=str_to_sentence(modalidad_delito)) %>% 
+  
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7,#, color=colores[1], 
+             size=1.8
+  ) +
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, linewidth = 2,
+  ) + theme_light() + tema_fgj +
+  # facet_wrap(.~tipo, scales = "free_y", nrow = 2) +
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "6 month") +
+  labs(x="Fecha de inicio", y="Promedio diario", 
+       color="",
+       title = paste0("Promedio diario de carpetas por robo de autopartes"), 
+       subtitle = paste0("Desde ",  format(as_date("2020-01-01"), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  scale_color_manual(values = colores[4:1]) +
+  tema_ppp
+
+
+ggsave(plot = gr_robo_coche_partes, 
+       "./graficas_incidencia_el_orgien/especiales/robo_vehiculo/gr_robo_coche_partes.svg",
+       width = 12, height = 6
+)
+
+#robo objetos
+gr_robo_coche_objetos <- data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria=="Robo de vehículos y autopartes" , 
+         # del_mp=="Robo de objetos s/v"
+         modalidad_delito=="ROBO DE OBJETOS DEL INTERIOR DE UN VEHICULO"
+         #del_mp %in% c("Robo a repartidor c/v", "Robo a repartidor s/v")
+  ) %>% mutate(tipo=del_mp) %>% 
+  
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7,#, color=colores[1], 
+             size=1.8
+  ) +
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, linewidth = 2,
+  ) + theme_light() + tema_fgj +
+  # facet_wrap(.~tipo, scales = "free_y", nrow = 2) +
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "6 month") +
+  labs(x="Fecha de inicio", y="Promedio diario", 
+       color="",
+       title = paste0("Promedio diario de carpetas por robo de objetos al interior de vehículo"), 
+       subtitle = paste0("Desde ",  format(as_date("2020-01-01"), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  scale_color_manual(values = colores[2:1]) +
+  tema_ppp
+
+
+ggsave(plot = gr_robo_coche_objetos, 
+       "./graficas_incidencia_el_orgien/especiales/robo_vehiculo/gr_robo_coche_objetos.svg",
+       width = 12, height = 6
+)
+
+
+#robo de vehículo con y sin violencia
+gr_robo_coche_tipo <- data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria=="Robo de vehículos y autopartes" , 
+         # del_mp=="Robo de objetos s/v"
+         grepl("vehícu", del_mp)
+         #del_mp %in% c("Robo a repartidor c/v", "Robo a repartidor s/v")
+  ) %>% mutate(tipo=del_mp) %>% 
+  
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7,#, color=colores[1], 
+             size=1.8
+  ) +
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, linewidth = 2,
+  ) + theme_light() + tema_fgj +
+  # facet_wrap(.~tipo, scales = "free_y", nrow = 2) +
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "6 month") +
+  labs(x="Fecha de inicio", y="Promedio diario", 
+       color="",
+       title = paste0("Promedio diario de carpetas por robo de vehículo por tipo"), 
+       subtitle = paste0("Desde ",  format(as_date("2020-01-01"), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  scale_color_manual(values = colores[2:1]) +
+  tema_ppp
+
+
+ggsave(plot = gr_robo_coche_tipo, 
+       "./graficas_incidencia_el_orgien/especiales/robo_vehiculo/gr_robo_coche_tipo.svg",
+       width = 12, height = 6
+)
+
+#####
+#robo a transeúnte o pasajero
+gr_robo_pasajero <- data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria=="Robo a transeúnte o pasajero" , 
+       grepl("PASAJE", modalidad_delito)
+         #del_mp %in% c("Robo a repartidor c/v", "Robo a repartidor s/v")
+  ) %>% mutate(tipo=case_when(
+    grepl("CON VIOLE|C/V", modalidad_delito) ~ "Con violencia", 
+    T ~ "Sin violencia"
+  )) %>% 
+  
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7,#, color=colores[1], 
+             size=1.8
+  ) +
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, linewidth = 2,
+  ) + theme_light() + tema_fgj +
+  # facet_wrap(.~tipo, scales = "free_y", nrow = 2) +
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "6 month") +
+  labs(x="Fecha de inicio", y="Promedio diario", 
+       color="",
+       title = paste0("Promedio diario de carpetas por robo a pasajero por tipo"), 
+       subtitle = paste0("Desde ",  format(as_date("2020-01-01"), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  scale_color_manual(values = colores[2:1]) +
+  tema_ppp
+
+
+ggsave(plot = gr_robo_pasajero, 
+       "./graficas_incidencia_el_orgien/especiales/robo_pasajero/gr_robo_pasajero.svg",
+       width = 12, height = 6
+)
+
+#robo a transeunte
+gr_robo_transeunte <- data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria=="Robo a transeúnte o pasajero" , 
+         !grepl("PASAJE", modalidad_delito)
+         #del_mp %in% c("Robo a repartidor c/v", "Robo a repartidor s/v")
+  ) %>% mutate(tipo=case_when(
+    grepl("CON VIOLE|C/V", modalidad_delito) ~ "Con violencia", 
+    T ~ "Sin violencia"
+  )) %>% 
+  
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7,#, color=colores[1], 
+             size=1.8
+  ) +
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, linewidth = 2,
+  ) + theme_light() + tema_fgj +
+  # facet_wrap(.~tipo, scales = "free_y", nrow = 2) +
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "6 month") +
+  labs(x="Fecha de inicio", y="Promedio diario", 
+       color="",
+       title = paste0("Promedio diario de carpetas por robo a transeúnte por tipo"), 
+       subtitle = paste0("Desde ",  format(as_date("2020-01-01"), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  scale_color_manual(values = colores[2:1]) +
+  tema_ppp
+
+
+ggsave(plot = gr_robo_transeunte, 
+       "./graficas_incidencia_el_orgien/especiales/robo_pasajero/gr_robo_transeunte.svg",
+       width = 12, height = 6
+)
+
+#####
+#Falsificación y fraude
+gr_falsificacion_fraude <- data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria=="Falsificación y fraude", 
+         del_mp %in% c("Fraude", "Abuso de confianza")
+         #del_mp %in% c("Robo a repartidor c/v", "Robo a repartidor s/v")
+  ) %>% mutate(tipo=del_mp) %>% 
+  
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7,#, color=colores[1], 
+             size=1.8
+  ) +
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, linewidth = 2,
+  ) + theme_light() + tema_fgj +
+  # facet_wrap(.~tipo, scales = "free_y", nrow = 2) +
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "6 month") +
+  labs(x="Fecha de inicio", y="Promedio diario", 
+       color="",
+       title = paste0("Promedio diario de carpetas por fraude y abuso de confianza por tipo"), 
+       subtitle = paste0("Desde ",  format(as_date("2020-01-01"), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  scale_color_manual(values = colores[6:1]) +
+  tema_ppp
+
+
+ggsave(plot = gr_falsificacion_fraude, 
+       "./graficas_incidencia_el_orgien/especiales/falsificacion/gr_falsificacion_fraude.svg",
+       width = 12, height = 6
+)
+
+
+# otras de falsificación
+gr_falsificacion_otras <- data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria=="Falsificación y fraude", 
+         !del_mp %in% c("Fraude", "Abuso de confianza", "Revelación de secretos")
+         #del_mp %in% c("Robo a repartidor c/v", "Robo a repartidor s/v")
+  ) %>% mutate(tipo=del_mp) %>% 
+  
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7,#, color=colores[1], 
+             size=1.8
+  ) +
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, linewidth = 2,
+  ) + theme_light() + tema_fgj +
+  # facet_wrap(.~tipo, scales = "free_y", nrow = 2) +
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "6 month") +
+  labs(x="Fecha de inicio", y="Promedio diario", 
+       color="",
+       title = paste0("Promedio diario de carpetas por cobranza ilegítima y usurpación por tipo"), 
+       subtitle = paste0("Desde ",  format(as_date("2020-01-01"), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  scale_color_manual(values = colores[3:1]) +
+  tema_ppp
+
+
+ggsave(plot = gr_falsificacion_otras, 
+       "./graficas_incidencia_el_orgien/especiales/falsificacion/gr_falsificacion_otras.svg",
+       width = 12, height = 6
+)
+
+
+#####
+#corrupción
+
+gr_cohecho <- data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(del_mp=="Cohecho"
+  ) %>% mutate(tipo=del_mp) %>% 
+  
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7,#, color=colores[1], 
+             size=1.8
+  ) +
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, linewidth = 2,
+  ) + theme_light() + tema_fgj +
+  # facet_wrap(.~tipo, scales = "free_y", nrow = 2) +
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "6 month") +
+  labs(x="Fecha de inicio", y="Promedio diario", 
+       color="",
+       title = paste0("Promedio diario de carpetas por cohecho"), 
+       subtitle = paste0("Desde ",  format(as_date("2020-01-01"), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  scale_color_manual(values = colores[2:1]) +
+  tema_ppp
+
+
+ggsave(plot = gr_cohecho, 
+       "./graficas_incidencia_el_orgien/especiales/corrupcion/gr_cohecho.svg",
+       width = 12, height = 6
+)
+
+## peculados
+gr_peculado <- data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(del_mp %in% c("Peculado", "Tráfico de influencia")
+  ) %>% mutate(tipo=del_mp) %>% 
+  
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7,#, color=colores[1], 
+             size=1.8
+  ) +
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, linewidth = 2,
+  ) + theme_light() + tema_fgj +
+  # facet_wrap(.~tipo, scales = "free_y", nrow = 2) +
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "6 month") +
+  labs(x="Fecha de inicio", y="Promedio diario", 
+       color="",
+       title = paste0("Promedio diario de carpetas por peculado y tráfico de influencia"), 
+       subtitle = paste0("Desde ",  format(as_date("2020-01-01"), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  scale_color_manual(values = colores[2:1]) +
+  tema_ppp
+
+
+ggsave(plot = gr_peculado, 
+       "./graficas_incidencia_el_orgien/especiales/corrupcion/gr_peculado.svg",
+       width = 12, height = 6
+)
+
+
+#####
+#delitos contra medio ambiente
+gr_ambiental <- data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria %in% c("Delitos contra el medio ambiente y los animales")
+  ) %>% 
+  mutate(del_mp=case_when(
+    grepl("DAÑO", modalidad_delito) ~ "Daño al suelo", 
+    T ~ str_to_sentence(modalidad_delito)
+  )) %>% 
+  mutate(tipo=del_mp) %>% 
+  
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7,#, color=colores[1], 
+             size=1.8
+  ) +
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, linewidth = 2,
+  ) + theme_light() + tema_fgj +
+  facet_wrap(.~tipo, scales = "free_y", nrow = 4) +
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "6 month") +
+  labs(x="Fecha de inicio", y="Promedio diario", 
+       color="",
+       title = paste0("Promedio diario de carpetas por delitos ambientales"), 
+       subtitle = paste0("Desde ",  format(as_date("2019-01-01"), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  scale_color_manual(values = colores[8:1]) +
+  tema_ppp
+
+
+ggsave(plot = gr_ambiental, 
+       "./graficas_incidencia_el_orgien/especiales/ambientales/gr_ambiental.svg",
+       width = 16, height = 8
+)
+
+
+#####
+#narcomenudeo
+gr_narco <- data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria %in% c("Posesión y venta de drogas")
+  ) %>% 
+  # mutate(del_mp=case_when(
+  #   grepl("DAÑO", modalidad_delito) ~ "Daño al suelo", 
+  #   T ~ str_to_sentence(modalidad_delito)
+  # )) %>% 
+  mutate(tipo=del_mp) %>% 
+  
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7,#, color=colores[1], 
+             size=1.8
+  ) +
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, linewidth = 2,
+  ) + theme_light() + tema_fgj +
+  # facet_wrap(.~tipo, scales = "free_y", nrow = 4) +
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "6 month") +
+  labs(x="Fecha de inicio", y="Promedio diario", 
+       color="",
+       title = paste0("Promedio diario de carpetas por narcomenudeo"), 
+       subtitle = paste0("Desde ",  format(as_date("2019-01-01"), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  scale_color_manual(values = colores[8:1]) +
+  tema_ppp
+
+
+ggsave(plot = gr_narco, 
+       "./graficas_incidencia_el_orgien/especiales/narco/gr_narcomenudeo.svg",
+       width = 16, height = 8
+)
+
+#####
+#transito vehícular
+gr_transito <- data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria %in% c("Tránsito vehícular")
+  ) %>% 
+  mutate(del_mp=case_when(
+    grepl("Hom", del_mp) ~ "Homicidio culposo tránsito", 
+    T ~ del_mp
+  )) %>% 
+  # mutate(del_mp=case_when(
+  #   grepl("DAÑO", modalidad_delito) ~ "Daño al suelo", 
+  #   T ~ str_to_sentence(modalidad_delito)
+  # )) %>% 
+  mutate(tipo=del_mp) %>% 
+  
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7,#, color=colores[1], 
+             size=1.8
+  ) +
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, linewidth = 2,
+  ) + theme_light() + tema_fgj +
+  facet_wrap(.~tipo, scales = "free_y", nrow = 4) +
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "6 month") +
+  labs(x="Fecha de inicio", y="Promedio diario", 
+       color="",
+       title = paste0("Promedio diario de carpetas por tránsito vehícular"), 
+       subtitle = paste0("Desde ",  format(as_date("2019-01-01"), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  scale_color_manual(values = colores[5:1]) +
+  tema_ppp
+
+
+ggsave(plot = gr_transito, 
+       "./graficas_incidencia_el_orgien/especiales/transito/gr_transito_090225.svg",
+       width = 16, height = 8
+)
+
+#####
+#convivencia y tranquilidad
+
+gr_convivencia <- data_bruto %>% 
+  # filter(year(fecha_inicio)>=2020) %>% 
+  filter(nueva_categoria %in% c("Convivencia y tranquilidad"), 
+         del_mp %in% c("Portación de objetos para agredir", 
+                       "Disparos de arma de fuego"
+                       )
+  ) %>% 
+  # mutate(del_mp=case_when(
+  #   grepl("Hom", del_mp) ~ "Homicidio culposo tránsito", 
+  #   T ~ del_mp
+  # )) %>% 
+  # mutate(del_mp=case_when(
+  #   grepl("DAÑO", modalidad_delito) ~ "Daño al suelo", 
+  #   T ~ str_to_sentence(modalidad_delito)
+  # )) %>% 
+  mutate(tipo=del_mp) %>% 
+  
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=n()) %>% ungroup() %>% 
+  complete(fecha_inicio=seq.Date(as_date("2019-01-01"), 
+                                 as_date(fecha_lim), "1 day"), 
+           tipo=unique(.$tipo),
+           fill=list(Total=0)
+  ) %>% group_by(fecha_inicio=floor_date(fecha_inicio, "1 month"), tipo) %>% 
+  summarise(Total=mean(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7,#, color=colores[1], 
+             size=1.8
+  ) +
+  geom_smooth(se=F,#, color=colores[7]
+              span=.1, linewidth = 2,
+  ) + theme_light() + tema_fgj +
+  # facet_wrap(.~tipo, scales = "free_y", nrow = 4) +
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  scale_x_date(date_labels = "%b\n%y", date_breaks = "6 month") +
+  labs(x="Fecha de inicio", y="Promedio diario", 
+       color="",
+       title = paste0("Promedio diario de carpetas por convivencia y tranquilidad por tipo"), 
+       subtitle = paste0("Desde ",  format(as_date("2019-01-01"), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  scale_color_manual(values = colores[8:1]) +
+  tema_ppp
+
+
+ggsave(plot = gr_convivencia, 
+       "./graficas_incidencia_el_orgien/especiales/convivencia/gr_convivencia.svg",
+       width = 12, height = 6
+)
+
+
+
+
+
+######
+#gráficas a petición
+gr_anual <- data_bruto %>% 
+  group_by(Año=year(fecha_inicio)) %>% 
+  summarise(Total=n()) %>% 
+  ggplot(aes(Año, Total)) +
+  geom_col(fill=colores[1]) +
+  geom_label(aes(label=comma(Total)), 
+             position = position_stack(vjust = .7), size=6
+             ) +
+  theme_light() +
+  scale_y_continuous(labels = comma) +
+  scale_x_continuous(breaks = c(2019:2024)) +
+  tema_ppp
+
+
+ggsave(plot = gr_anual, 
+       "./graficas_incidencia_el_orgien/gr_anual.svg",
+       width = 12, height = 6
+)
+
+
+
+#porcentaje de Susceptibles de Acuerdo Reparatorio
+
+
+delitos_ar <- read_excel("Delitos AR 2024.xlsx") %>% 
+  drop_na(modalidad_delito) %>% 
+  pull(modalidad_delito) %>% unique()
+
+
+gr_acuerdo_reparatorio <- data_bruto %>% 
+  mutate(acuerdo=case_when(
+    modalidad_delito %in% delitos_ar ~ "Delitos susceptibles de Acuerdo Reparatorio", 
+    T ~ "Otros"
+  )) %>% 
+  group_by(año=year(fecha_inicio),
+           acuerdo
+           ) %>% 
+  summarise(Total=n()) %>% 
+  mutate(porcentaje=percent(Total/sum(Total), 1)) %>% 
+  ggplot(aes(factor(año), Total, fill=acuerdo)) +
+  geom_col() +
+  geom_label(aes(label=paste0(comma(Total), "\n(", porcentaje, ")")), 
+             position = position_stack(vjust = .7), size=6,
+             fill="ghostwhite",
+             show.legend = F
+             ) + scale_y_continuous(labels = comma) +
+  theme_light() + tema_fgj +
+  tema_ppp +
+  labs(title = "Carpetas divididas por delitos susceptibles de Acuerdo Reparatorio", 
+       subtitle = "Desde 1 de enero de 2019 hasta 31 de diciembre de 2020", 
+       y="Carpetas de investigación", x="Fecha de inicio", fill=""
+       ) +
+  scale_fill_manual(values = colores[7:8])
+
+
+ggsave(plot = gr_acuerdo_reparatorio, 
+       "./graficas_incidencia_el_orgien/gr_acuerdo_reparatorio.svg",
+       width = 12, height = 6
+)
+
+
+####
+#delitos sin violencia imputado desconocido
+punibles <- read_rds("punibles_robos_sv.rds")
+
+
+robo_sin_viol <- data_bruto %>% 
+  filter(id_ap %in% punibles$idAveriguacionPrevia)
+
+nombres_desc <- paste("DESCONO", "ANONIM", "NNN", "IDENTID",
+                      "MASCU", "FEMENI",
+                      sep = "|")
+punible_desc <- punibles %>% 
+  mutate(nombre_completo=paste0(nombre, apellidoPaterno, apellidoMaterno)) %>% 
+  filter(grepl(nombres_desc, nombre_completo)) %>% 
+  pull(idAveriguacionPrevia)
+
+gr_robo_sin_viol <- robo_sin_viol %>% 
+  mutate(desconocido=case_when(
+    id_ap %in% punible_desc ~ "Identidad desconocida", 
+    T ~ "Conocido"
+  )) %>% 
+  group_by(año=year(fecha_inicio), desconocido) %>% 
+  summarise(Total=n()) %>% 
+  mutate(porcentaje=percent(Total/sum(Total))) %>% 
+  ggplot(aes(factor(año), Total, fill=desconocido, group=desconocido)) +
+  geom_col() +
+  geom_label(aes(label=paste0(comma(Total), "\n(", porcentaje, ")")), 
+             position = position_stack(vjust = .7), size=6,
+             fill="ghostwhite",
+             show.legend = F
+  ) + scale_y_continuous(labels = comma) +
+  theme_light() + tema_fgj +
+  tema_ppp +
+  labs(title = "Carpetas de robo sin violencia por imputado desconocido", 
+       subtitle = "Desde 1 de enero de 2019 hasta 31 de diciembre de 2020", 
+       y="Carpetas de investigación", x="Fecha de inicio", fill=""
+  ) +
+  scale_fill_manual(values = colores[7:8])
+
+
+ggsave(plot = gr_robo_sin_viol, 
+       "./graficas_incidencia_el_orgien/gr_robo_sin_viol.svg",
+       width = 12, height = 6
+)
+
+
+#eficiencia ministerial delitos seleccionados
+
+ordenes %>% 
+  filter(tipo_delito %in% c("Homicidio doloso", "Secuestro", "Extorsión", 
+                            "Violación", 
+                            "Feminicidio"))
+
+gr_eficienia_alta <- graf_efi_ministerial(
+  datos = data_bruto  %>% 
+    filter(del_mp %in% c("Homicidio doloso", "Secuestro", "Extorsión",
+                         # "Violación", 
+                         "Feminicidio"), #|
+             delito=="VIOLACIÓN"
+             ), 
+  fecha_inicio_global = fecha_inicio_global, 
+  fecha_lim = fecha_lim, 
+  delito =c("Homicidio doloso", "Secuestro", #"Extorsión",
+            # "Violación", 
+            "Feminicidio")
+    
+  
+  
+)
+
+ggsave(plot = gr_eficienia_alta, 
+       "./graficas_incidencia_el_orgien/gr_eficienia_alta_muertes_secuestro.png",
+       width = 12, height = 6
+)
+
+
+####
+# 
+data_1 <- tibble(tipo=c("Delitos susceptibles de Acuerdo Reparatorio",
+                        "Delitos atendidos en MASC"), 
+                 Total=c(107656, 7683)
+                 ) %>% 
+  mutate(porcentaje=percent(Total/sum(Total)))
+
+gr_data_1 <- data_1 %>% 
+  ggplot(aes(factor(tipo), Total, fill=tipo)) +
+  geom_col() +
+  geom_label(aes(label=paste0(comma(Total), "\n(", porcentaje, ")")), 
+             position = position_stack(vjust = .7), size=6,
+             fill="ghostwhite",
+             show.legend = F
+  ) + scale_y_continuous(labels = comma) +
+  theme_light() + tema_fgj +
+  tema_ppp +
+  labs(title = "", 
+       subtitle = "", 
+       y="", x="", fill=""
+  ) +
+  scale_fill_manual(values = colores[1:2])
+
+
+ggsave(plot = gr_data_1, 
+       "./graficas_incidencia_el_orgien/gr_data_1.png",
+       width = 12, height = 6
+)
+
+
+###
+#grafica de eficiencia por delito 2024
+data_2 <- tibble(delito=c("Homicidio doloso", "Feminicidio", "Secuestro", 
+                          "Extorsión", "Violación"
+                          ), 
+                 incidencia=c(815, 67, 31, 462, 2526), 
+                 Vinculaciones=c(695, 169, 257, 94, 357)
+                 ) %>% 
+  # mutate(Porcentaje_vinculacion=Vinculaciones/incidencia)
+  gather(tipo, Total, incidencia:Vinculaciones)
+
+
+gr_data_2 <- data_2 %>% 
+  ggplot(aes(delito, Total, color=tipo, group=tipo)) + 
+  geom_point(size=1.8) +
+  geom_line(size=2) +
+  geom_label(aes(label=comma(Total, 1)),
+             show.legend = F,
+             size=6, #position = position_stack(vjust = 1.05)
+             ) + theme_light() +
+  tema_fgj + tema_ppp +
+  labs(y="Total", x="Delito", 
+       title = "Incidencia vs eficiencia de 2024"
+       ) +
+  scale_color_manual(values = colores)
+
+ggsave(plot = gr_data_2, 
+       "./graficas_incidencia_el_orgien/gr_data_2_2.svg",
+       width = 12, height = 6
+)
+
+
+#####
+#eficiencia ministerial de diversos delitos
+delitos_altos <- c("Homicidio doloso", "Feminicidio", "Secuestro", 
+                   "Secuestro express", "Narcomenudeo"
+                   )
+
+carpetas <- data_bruto %>% 
+  filter(del_mp %in% c("Homicidio doloso", "Feminicidio", "Secuestro", 
+                       "Secuestro express"
+  ) | grepl("Narcomenudeo", del_mp)
+         )%>% 
+  mutate(del_mp=case_when(
+    grepl("Narcomenudeo", del_mp) ~ "Narcomenudeo", T ~ del_mp
+  )) %>% 
+  group_by(fecha_inicio=floor_date(fecha_inicio, "1 year"), 
+           tipo_delito=del_mp
+           ) %>% 
+  summarise(Carpetas=n()) 
+
+data_id <- data_bruto %>% 
+  filter(del_mp %in% c("Homicidio doloso", "Feminicidio", "Secuestro", 
+                       "Secuestro express"
+  ) | grepl("Narcomenudeo", del_mp)
+  ) %>% drop_na(id_ap) %>% pull(id_ap)
+
+
+vinculaciones_flagr <- flagrancias %>% 
+  filter(id_ap %in% data_id) %>% 
+  left_join(data_bruto %>% select(id_ap, del_mp)) %>% 
+  mutate(del_mp=case_when(
+    grepl("Narcomenudeo", del_mp) ~ "Narcomenudeo", T ~ del_mp
+  )) %>%
+  group_by(fecha_inicio=floor_date(fecha_inicio, "1 year"), 
+           tipo_delito=del_mp) %>% 
+  summarise(Vinculados=sum(vinculacion_a_proceso_por_persona, na.rm = T))
+
+
+vinculaciones_ord <- ordenes %>% 
+  #filter(cat_mp2 %in% delito_elegido) %>% 
+  mutate(tipo_delito=case_when(
+    grepl("Narcomenudeo", tipo_delito) ~ "Narcomenudeo", T ~ tipo_delito
+  )) %>%
+  filter(tipo_delito %in% delitos_altos) %>% 
+  group_by(fecha_inicio=floor_date(fecha_cumplida, "1 year"), 
+           tipo_delito
+           ) %>% 
+  summarise(Vinculados=n())
+
+total_vinc <- bind_rows(vinculaciones_flagr, vinculaciones_ord) %>% 
+  group_by(fecha_inicio, 
+           tipo_delito
+           ) %>% 
+  summarise(Vinculaciones=sum(Vinculados)) %>% 
+  filter(fecha_inicio<=fecha_lim)
+
+# total_sen <- sentencias %>% 
+#   filter(tipo_delito %in% delito_elegido, 
+#          fallo_homologado=="CONDENATORIA"
+#          ) %>% 
+#   group_by(fecha_inicio=floor_date(fecha_de_fallo, "1 year")) %>% 
+#   summarise(Sentencias=n())
+
+
+gr_trend_vinc <- carpetas %>% 
+  filter(tipo_delito %in% delitos_altos) %>% 
+  left_join(total_vinc, by=c("fecha_inicio", "tipo_delito")) %>% 
+  gather(tipo, Total, Carpetas:Vinculaciones) %>% 
+  mutate(fecha_inicio=as_date(fecha_inicio)) %>% 
+  filter(tipo_delito %in% delitos_altos) %>% 
+  # complete(fecha_inicio=seq.Date(as_date(fecha_inicio_global), 
+  #                                as_date(fecha_lim), "1 year"), 
+  #          tipo=c("Carpetas", "Vinculaciones"),
+  #          tipo_delito=delitos_altos,
+  #          fill=list(Total=0)
+  # ) %>% 
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=sum(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7) +
+  geom_smooth(se=F, ) + theme_light() + tema_fgj +
+  geom_label_repel(aes(label=comma(Total)),
+                   size=5, show.legend = F, direction = "y"
+  )+
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  # facet_wrap(.~tipo_delito, scales = "free", nrow = 2) +
+  scale_x_date(date_labels = "%Y", date_breaks = "1 year") +
+  labs(x="Fecha de inicio", y="Total", 
+       title = paste0("Total de vinculaciones y carpetas por ", knitr::combine_words(delitos_altos, and = " y ")), 
+       subtitle = paste0("Desde ",  format(as_date(fecha_inicio_global), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  theme(axis.text.x = element_text(angle = 90)) +
+  tema_fgj + scale_y_continuous(labels = comma) +
+  theme(legend.position = "bottom") +
+  scale_color_manual(values = colores[7:9]) +
+  tema_ppp
+
+ggsave(plot = gr_trend_vinc, 
+       "./graficas_incidencia_el_orgien/gr_vinc_delitos_altos2_2.svg",
+       width = 16, height = 9
+)
+
+
+####
+#tabla de total de ci y vinc 2019 a 2024
+carpetas <- data_bruto %>% 
+  group_by(fecha_inicio=floor_date(fecha_inicio, "1 year")
+  ) %>% 
+  summarise(Carpetas=n()) 
+
+data_id <- data_bruto %>% drop_na(id_ap) %>% pull(id_ap)
+
+
+vinculaciones_flagr <- flagrancias %>% 
+  # filter(id_ap %in% data_id) %>% 
+  group_by(fecha_inicio=floor_date(fecha_inicio, "1 year")) %>% 
+  summarise(Vinculados=sum(vinculacion_a_proceso_por_persona, na.rm = T))
+
+
+vinculaciones_ord <- ordenes %>% 
+  #filter(cat_mp2 %in% delito_elegido) %>% 
+  # filter(tipo_delito %in% delitos_altos) %>% 
+  group_by(fecha_inicio=floor_date(fecha_cumplida, "1 year"), 
+           # tipo_delito
+  ) %>% 
+  summarise(Vinculados=n())
+
+total_vinc <- bind_rows(vinculaciones_flagr, vinculaciones_ord) %>% 
+  group_by(fecha_inicio, 
+           # tipo_delito
+  ) %>% 
+  summarise(Vinculaciones=sum(Vinculados)) %>% 
+  filter(fecha_inicio<=fecha_lim)
+
+
+carpetas %>% 
+  # filter(tipo_delito %in% delitos_altos) %>% 
+  left_join(total_vinc, by=c("fecha_inicio")) %>% 
+  gather(tipo, Total, Carpetas:Vinculaciones) %>% 
+  write.csv("./graficas_incidencia_el_orgien/carpetas_vinc_19_24.csv")
+
+
+
+# eficiencia robo de vehiculo y motocicleta
+
+gr_efi_auto <- graf_efi_ministerial_traza(
+  datos =  data_bruto %>% 
+    filter(delito=="ROBO DE VEHÍCULO CON Y SIN VIOLENCIA", 
+           !grepl("MOTOCI", modalidad_delito)
+           ), 
+  fecha_inicio_global = "2019-01-01", 
+  fecha_lim="2024-12-31", 
+  delito_elegido = "Robo de vehículo (sin motocicleta)"
+    
+)
+
+carpetas <- data_bruto %>% 
+  filter(delito=="ROBO DE VEHÍCULO CON Y SIN VIOLENCIA", 
+         grepl("MOTOCI", modalidad_delito)
+  ) %>% 
+  group_by(fecha_inicio=floor_date(fecha_inicio, "1 year"), 
+           #tipo_delito=del_mp
+  ) %>% 
+  summarise(Carpetas=n()) 
+
+data_id <- data_bruto %>% 
+  filter(delito=="ROBO DE VEHÍCULO CON Y SIN VIOLENCIA", 
+         grepl("MOTOCI", modalidad_delito)
+  ) %>% drop_na(id_ap) %>% pull(id_ap)
+
+
+vinculaciones_flagr <- flagrancias %>% 
+  filter(id_ap %in% data_id) %>% 
+  group_by(fecha_inicio=floor_date(fecha_inicio, "1 year")) %>% 
+  summarise(Vinculados=sum(vinculacion_a_proceso_por_persona, na.rm = T))
+
+
+vinculaciones_ord <- ordenes %>% 
+  filter(delito_alto_impacto %in% "ROBO DE VEHÍCULO CON Y SIN VIOLENCIA", 
+         grepl("MOTOC", modalidad_delito)
+         ) %>% 
+  group_by(fecha_inicio=floor_date(fecha_cumplida, "1 year")
+  ) %>% 
+  summarise(Vinculados=n())
+
+total_vinc <- bind_rows(vinculaciones_flagr, vinculaciones_ord) %>% 
+  group_by(fecha_inicio
+  ) %>% 
+  summarise(Vinculaciones=sum(Vinculados)) %>% 
+  filter(fecha_inicio<=fecha_lim)
+
+# total_sen <- sentencias %>% 
+#   filter(tipo_delito %in% delito_elegido, 
+#          fallo_homologado=="CONDENATORIA"
+#          ) %>% 
+#   group_by(fecha_inicio=floor_date(fecha_de_fallo, "1 year")) %>% 
+#   summarise(Sentencias=n())
+
+
+gr_trend_vinc <- carpetas %>% 
+  # filter(tipo_delito %in% delitos_altos) %>% 
+  left_join(total_vinc, by=c("fecha_inicio")) %>% 
+  gather(tipo, Total, Carpetas:Vinculaciones) %>% 
+  mutate(fecha_inicio=as_date(fecha_inicio)) %>% 
+  # filter(tipo_delito %in% delitos_altos) %>% 
+  # complete(fecha_inicio=seq.Date(as_date(fecha_inicio_global), 
+  #                                as_date(fecha_lim), "1 year"), 
+  #          tipo=c("Carpetas", "Vinculaciones"),
+  #          tipo_delito=delitos_altos,
+  #          fill=list(Total=0)
+  # ) %>% 
+  group_by(fecha_inicio, tipo) %>% 
+  summarise(Total=sum(Total)) %>% 
+  ggplot(aes(fecha_inicio, Total, color=tipo)) +
+  geom_point(alpha=.7) +
+  geom_smooth(se=F, ) + theme_light() + tema_fgj +
+  geom_label_repel(aes(label=comma(Total)),
+                   size=5, show.legend = F, direction = "y"
+  )+
+  # geom_smooth(se=F, color=colores[2], method = "lm") +
+  # facet_wrap(.~tipo_delito, scales = "free", nrow = 2) +
+  scale_x_date(date_labels = "%Y", date_breaks = "1 year") +
+  labs(x="Fecha de inicio", y="Total", 
+       title = paste0("Total de vinculaciones y carpetas por ", knitr::combine_words("Robo de motocicleta", and = " y ")), 
+       subtitle = paste0("Desde ",  format(as_date(fecha_inicio_global), "%B de %Y"), " a ",
+                         format(as_date(fecha_lim), "%B de %Y"))) +
+  theme(axis.text.x = element_text(angle = 90)) +
+  tema_fgj + scale_y_continuous(labels = comma) +
+  theme(legend.position = "bottom") +
+  scale_color_manual(values = colores[7:9]) +
+  tema_ppp
+
+ggsave(plot = gr_trend_vinc, 
+       "../graficas/gr_efi_moto_sin_traza.svg",
+       width = 16, height = 9
+)
+
+
+gr_efi_moto <- graf_efi_ministerial_traza(
+  datos =  data_bruto %>% 
+    filter(delito=="ROBO DE VEHÍCULO CON Y SIN VIOLENCIA", 
+           grepl("MOTOCI", modalidad_delito)
+    ), 
+  fecha_inicio_global = "2019-01-01", 
+  fecha_lim="2024-12-31", 
+  delito_elegido = "Robo de motocicleta"
+  
+)
+
+
+ggsave(plot = gr_efi_auto, 
+       "../graficas/efi_auto.svg", width = 12, height = 6
+       )
+
+ggsave(plot = gr_efi_moto, 
+       "../graficas/efi_moto.svg", width = 12, height = 6
 )
