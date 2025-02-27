@@ -102,7 +102,12 @@ juntas <- juntas %>%
          fecha_de_inicio=fecha_inicio, 
          fiscal=mp
          )
-  
+ 
+
+juntas <- juntas %>% 
+  mutate(ct_inicio_ap=gsub("UAT-|URI-|ADD-", "", ct_inicio))
+
+
 agencias_fiscalias <- read_excel("fiscalias_agencias.xlsx")
 
 iniciadas %>% 
@@ -119,7 +124,7 @@ grafica_cargas_trabajo <- function(
 ){
   data <- datos %>% 
     # filter(grepl(fiscalia_analisis, ct_inicio_ap)) %>% 
-    mutate(fecha_inicio=dmy(fecha_de_inicio)) %>% 
+    mutate(fecha_inicio=as_date(fecha_de_inicio)) %>% 
     filter(fecha_inicio>=fecha_comienzo, 
            fecha_inicio<=fecha_fin
     ) %>% 
@@ -381,23 +386,9 @@ grafica_cargas_trabajo <- function(
              detenido=="Sin detenido") %>% 
       group_by(fiscalia, #detenido, 
                # fecha_inicio, 
-               fiscal, grupo
+               fiscal
       ) %>% 
       summarise(Total=n()/periodo) 
-      #%>% ungroup() %>% 
-      # complete(fecha_inicio=seq.Date(as_date(fecha_comienzo),
-      #                                as_date(fecha_fin), 
-      #                                "1 day"
-      # ), 
-      # # fiscal=c(.$fiscal),
-      # #detenido=c("Con detenido", "Sin detenido"), 
-      # ct_inicio_ap=unique(data$ct_inicio_ap), 
-      # fill=list(Total=0)
-      # 
-      # ) %>% 
-      # group_by(ct_inicio_ap, fiscal) %>% 
-      # summarise(media=round(mean(Total, na.rm = T), 2)) %>% 
-      # drop_na(fiscal)
     
     
     
@@ -409,19 +400,7 @@ grafica_cargas_trabajo <- function(
                fiscal, grupo
       ) %>% 
       summarise(Total=n()/periodo) 
-    
-    # prom_territoriales_sd <- iniciadas %>% 
-    #   mutate(fecha_inicio=dmy(fecha_de_inicio)) %>% 
-    #   filter(fecha_inicio>=fecha_comienzo, 
-    #          fecha_inicio<=fecha_fin
-    #   ) %>% 
-    #   filter(!id_ap %in% data$id_ap ) %>% 
-    #   mutate(detenido=case_when(
-    #     id_ap %in% flagrancias$id_ap ~ "Con detenido", T ~ "Sin detenido" 
-    #   )) %>% 
-    #   filter(detenido=="Sin detenido") %>% 
-    #   group_by(fiscalia, fiscal) %>% 
-    #   summarise(Total=n()/periodo) 
+
     
     prom_territoriales_sd <- data_1_sd %>% ungroup() %>% 
       # group_by(fiscalia) %>% 
@@ -455,10 +434,10 @@ grafica_cargas_trabajo <- function(
       summarise(Total=mean(Total))
     
     orden_data_1_sd <- data_1_sd %>%
-      group_by(fiscalia) %>% summarise(media=mean(Total)) %>% 
+      group_by(fiscalia) %>% summarise(media=sum(Total)) %>% 
       arrange(-media) %>% pull(fiscalia)
     orden_data_1_cd <- data_1_cd %>% 
-      group_by(fiscalia) %>% summarise(media=mean(Total)) %>% 
+      group_by(fiscalia) %>% summarise(media=sum(Total)) %>% 
       arrange(-media) %>% pull(fiscalia)
     
     # prom_fisc <- bind_rows(data_1_sd, data_1_cd) %>% ungroup() %>% 
@@ -489,18 +468,19 @@ grafica_cargas_trabajo <- function(
     
     gr_sd <- data_agrupada %>% 
       filter(detenido=="Sin detenido") %>% 
-      left_join(total_mp %>% 
-                  filter(detenido=="Sin detenido")
-                  , by="fiscalia") %>% 
-      mutate(label=paste0(fiscalia, "\n", agentes)) %>%
-      ggplot(aes(reorder(label, -Total), Total)) +
+      mutate(fiscalia=factor(fiscalia, 
+                             levels=orden_data_1_sd)) %>% 
+      # left_join(total_mp %>% 
+      #             filter(detenido=="Sin detenido")
+      #             , by="fiscalia") %>% 
+      # mutate(label=paste0(fiscalia, "\n", agentes)) %>%
+      # ggplot(aes(reorder(label, -Total), Total)) +
+      ggplot(aes(fiscalia, Total)) +
       geom_col(fill=rgb(46,92,129, maxColorValue = 255), alpha=.9) +
       geom_jitter(data=data_1_sd %>% 
-                    left_join(total_mp %>% 
-                                filter(detenido=="Sin detenido"),
-                              by="fiscalia") %>% 
-                    mutate(label=paste0(fiscalia, "\n", agentes)), 
-                 aes(x=label, y=Total), size=2.5, 
+                    mutate(fiscalia=factor(fiscalia, 
+                                           levels=orden_data_1_sd)), 
+                 aes(x=fiscalia, y=Total), size=2.5, 
                  color=rgb(248,175,103, maxColorValue = 255), fill=rgb(248,175,103, maxColorValue = 255), width = .1, 
                  shape=18
       ) +
@@ -523,17 +503,17 @@ grafica_cargas_trabajo <- function(
     
     gr_cd <- data_agrupada %>% 
       filter(detenido=="Con detenido") %>% 
-      left_join(total_mp %>% 
-                  filter(detenido=="Con detenido"), by="fiscalia") %>% 
-      mutate(label=paste0(fiscalia, "\n", agentes)) %>%
-    ggplot(aes(reorder(label, -Total), Total)) +
+      mutate(fiscalia=factor(fiscalia, 
+                             levels=orden_data_1_cd)) %>% 
+      # left_join(total_mp %>% 
+      #             filter(detenido=="Con detenido"), by="fiscalia") %>% 
+      # mutate(label=paste0(fiscalia, "\n", agentes)) %>%
+    ggplot(aes(fiscalia, Total)) +
       geom_col(fill=rgb(46,92,129, maxColorValue = 255), alpha=.9) +
       geom_jitter(data=data_1_cd %>% 
-                    left_join(total_mp %>% 
-                                filter(detenido=="Con detenido"),
-                              by="fiscalia") %>% 
-                    mutate(label=paste0(fiscalia, "\n", agentes)), 
-                  aes(x=label, y=Total), size=2, 
+                    mutate(fiscalia=factor(fiscalia, 
+                                           levels=orden_data_1_cd)), 
+                  aes(x=fiscalia, y=Total), size=2, 
                   color=rgb(248,175,103, maxColorValue = 255), fill=rgb(248,175,103, maxColorValue = 255),
                   width = .1, 
                   shape=18
@@ -579,7 +559,7 @@ grafica_cargas_trabajo <- function(
                # fecha_inicio, 
                fiscal, grupo
       ) %>% 
-      summarise(Total=n()/periodo) #%>% drop_na(fiscal)
+      summarise(Total=n()/periodo) %>% drop_na(fiscal) 
 
     
     prom_territoriales_sd <- data_1_sd %>% ungroup() %>% 
@@ -588,14 +568,16 @@ grafica_cargas_trabajo <- function(
     
   
     prom_territoriales_cd <- data_1_cd %>% ungroup() %>% 
+      filter(!ct_inicio_ap %in% c("IZP-4", "IZP-8", "IZP-9", 
+                                  "COY-3")) %>% 
       # group_by(fiscalia) %>% 
       summarise(Total=mean(Total))
     
     orden_data_1_sd <- data_1_sd %>%
-      group_by(ct_inicio_ap) %>% summarise(media=mean(Total)) %>% 
+      group_by(ct_inicio_ap) %>% summarise(media=sum(Total)) %>% 
       arrange(-media) %>% pull(ct_inicio_ap)
     orden_data_1_cd <- data_1_cd %>% 
-      group_by(ct_inicio_ap) %>% summarise(media=mean(Total)) %>% 
+      group_by(ct_inicio_ap) %>% summarise(media=sum(Total)) %>% 
       arrange(-media) %>% pull(ct_inicio_ap)
     
     # prom_fisc <- bind_rows(data_1_sd, data_1_cd) %>% ungroup() %>% 
@@ -627,21 +609,21 @@ grafica_cargas_trabajo <- function(
     gr_sd <- data_1_sd %>% 
       # filter(detenido=="Sin detenido") %>% 
       mutate(fiscalia=gsub("-|[0-9]", "", ct_inicio_ap)) %>% 
-      left_join(total_mp %>% 
-                  filter(detenido=="Sin detenido")
-                , by="ct_inicio_ap") %>% 
-      mutate(label=paste0(ct_inicio_ap, "\n", agentes)) %>%
-    ggplot(aes(reorder(label, -Total), Total)) +
+      # left_join(total_mp %>% 
+      #             filter(detenido=="Sin detenido")
+      #           , by="ct_inicio_ap") %>% 
+      # mutate(label=paste0(ct_inicio_ap, "\n", agentes)) %>%
+      mutate(ct_inicio_ap=factor(ct_inicio_ap, 
+                             levels=orden_data_1_sd)) %>% 
+    ggplot(aes(ct_inicio_ap, Total)) +
       geom_col(data=. %>% 
                  group_by(fiscalia, ct_inicio_ap) %>% 
                  summarise(Total=mean(Total)) %>% 
-                 left_join(total_mp %>% 
-                             filter(detenido=="Sin detenido")
-                           , by="ct_inicio_ap") %>% 
-                 mutate(label=paste0(ct_inicio_ap, "\n", agentes)),
+                 mutate(ct_inicio_ap=factor(ct_inicio_ap, 
+                                            levels=orden_data_1_sd)),
                fill=rgb(46,92,129, maxColorValue = 255), alpha=.9) +
       geom_jitter(
-                  aes(x=label, y=Total), size=2.5,
+                  aes(x=ct_inicio_ap, y=Total), size=2.5,
                   color=rgb(248,175,103, maxColorValue = 255), fill=rgb(248,175,103, maxColorValue = 255),
                   width = .1,
                   shape=18
@@ -653,10 +635,8 @@ grafica_cargas_trabajo <- function(
       geom_text(data=. %>% 
                   group_by(fiscalia, ct_inicio_ap) %>% 
                   summarise(Total=mean(Total)) %>% 
-                  left_join(total_mp %>% 
-                              filter(detenido=="Sin detenido")
-                            , by="ct_inicio_ap") %>% 
-                  mutate(label=paste0(ct_inicio_ap, "\n", agentes)),
+                  mutate(ct_inicio_ap=factor(ct_inicio_ap, 
+                                             levels=orden_data_1_sd)),
                 aes(label=round(Total, 2)), 
                 position = position_stack(vjust = 1.1), size=4.5
       ) +
@@ -673,21 +653,21 @@ grafica_cargas_trabajo <- function(
     
     gr_cd <- data_1_cd %>% 
       mutate(fiscalia=gsub("-|[0-9]", "", ct_inicio_ap)) %>% 
-      left_join(total_mp %>% 
-                  filter(detenido=="Con detenido")
-                , by="ct_inicio_ap") %>% 
-      mutate(label=paste0(ct_inicio_ap, "\n", agentes)) %>%
-      ggplot(aes(reorder(label, -Total), Total)) +
+      # left_join(total_mp %>% 
+      #             filter(detenido=="Con detenido")
+      #           , by="ct_inicio_ap") %>% 
+      # mutate(label=paste0(ct_inicio_ap, "\n", agentes)) %>%
+      mutate(ct_inicio_ap=factor(ct_inicio_ap, 
+                                 levels=orden_data_1_cd)) %>% 
+      ggplot(aes(ct_inicio_ap, Total)) +
       geom_col(data=. %>% 
                  group_by(fiscalia, ct_inicio_ap) %>% 
                  summarise(Total=mean(Total)) %>% 
-                 left_join(total_mp %>% 
-                             filter(detenido=="Con detenido")
-                           , by="ct_inicio_ap") %>% 
-                 mutate(label=paste0(ct_inicio_ap, "\n", agentes)),
+                 mutate(ct_inicio_ap=factor(ct_inicio_ap, 
+                                            levels=orden_data_1_cd)),
                fill=rgb(46,92,129, maxColorValue = 255), alpha=.9) +
       geom_jitter(
-        aes(x=label, y=Total), size=2.5,
+        aes(x=ct_inicio_ap, y=Total), size=2.5,
         color=rgb(248,175,103, maxColorValue = 255), fill=rgb(248,175,103, maxColorValue = 255),
         width = .1,
         shape=18
@@ -699,10 +679,8 @@ grafica_cargas_trabajo <- function(
       geom_text(data=. %>% 
                   group_by(fiscalia, ct_inicio_ap) %>% 
                   summarise(Total=mean(Total)) %>% 
-                  left_join(total_mp %>% 
-                              filter(detenido=="Con detenido")
-                            , by="ct_inicio_ap") %>% 
-                  mutate(label=paste0(ct_inicio_ap, "\n", agentes)),
+                  mutate(ct_inicio_ap=factor(ct_inicio_ap, 
+                                             levels=orden_data_1_cd)),
                 aes(label=round(Total, 2)), 
                 position = position_stack(vjust = 1.1), size=4.5
       ) +
@@ -734,7 +712,7 @@ grafica_cargas_trabajo2 <- function(
     fiscalia_analisis=siglas_fiscalia_analisis,
     fecha_comienzo=inicio_quincena, 
     fecha_fin=final_quincena, 
-    tipo = c("total", "promedio", "mp", "agencia")
+    tipo = c("total", "promedio", "fiscalia_sin", "fiscalia_con", "agencia")
 ){
   data <- datos %>% 
     # filter(grepl(fiscalia_analisis, ct_inicio_ap)) %>% 
@@ -991,10 +969,21 @@ grafica_cargas_trabajo2 <- function(
       labs(x="Agencia de inicio", y="Total de carpetas") +
       tema_ppp
   }
-  else if (tipo=="mp") {
+  else if (tipo=="fiscalia_sin") {
 
     periodo <-  as.integer(as_date(fecha_fin)-as_date(fecha_comienzo))+1
 
+    data_1_sd_mp <- data %>%
+      filter(quincena=="Actual",
+             detenido=="Sin detenido") %>%
+      group_by(fiscalia, #detenido,
+               fecha_inicio,
+               fiscal
+      ) %>%
+      summarise(Total=n()) %>% 
+      group_by(fiscalia, fiscal) %>% 
+      summarise(Total=mean(Total))
+    
     data_1_sd <- data %>%
       filter(quincena=="Actual",
              detenido=="Sin detenido") %>%
@@ -1006,23 +995,19 @@ grafica_cargas_trabajo2 <- function(
       group_by(fiscalia, fecha_inicio) %>%
       summarise(fiscales=n(),
                 Total=sum(Total, na.rm = T)
-                ) %>%
+      ) %>%
       mutate(media=Total/fiscales)
-    #%>% ungroup() %>%
-    # complete(fecha_inicio=seq.Date(as_date(fecha_comienzo),
-    #                                as_date(fecha_fin),
-    #                                "1 day"
-    # ),
-    # # fiscal=c(.$fiscal),
-    # #detenido=c("Con detenido", "Sin detenido"),
-    # ct_inicio_ap=unique(data$ct_inicio_ap),
-    # fill=list(Total=0)
-    #
-    # ) %>%
-    # group_by(ct_inicio_ap, fiscal) %>%
-    # summarise(media=round(mean(Total, na.rm = T), 2)) %>%
-    # drop_na(fiscal)
 
+    data_1_cd_mp <- data %>%
+      filter(quincena=="Actual",
+             detenido=="Con detenido") %>%
+      group_by(fiscalia, #detenido,
+               fecha_inicio,
+               fiscal
+      ) %>%
+      summarise(Total=n()) %>% 
+      group_by(fiscalia, fiscal) %>% 
+      summarise(Total=mean(Total))
 
 
 
@@ -1053,19 +1038,19 @@ grafica_cargas_trabajo2 <- function(
     #   group_by(fiscalia, fiscal) %>%
     #   summarise(Total=n()/periodo)
 
-    prom_territoriales_sd <- data_1_sd %>% ungroup() %>%
+    prom_territoriales_sd <- data_1_sd_mp %>% ungroup() %>%
       # group_by(fiscalia) %>%
-      summarise(Total=mean(media))
+      summarise(Total=mean(Total))
 
-    prom_territoriales_cd <- data_1_cd %>% ungroup() %>%
+    prom_territoriales_cd <- data_1_cd_mp %>% ungroup() %>%
       # group_by(fiscalia) %>%
-      summarise(Total=mean(media))
+      summarise(Total=mean(Total))
 
     orden_data_1_sd <- data_1_sd %>%
-      group_by(fiscalia) %>% summarise(media=mean(media)) %>%
+      group_by(fiscalia) %>% summarise(media=sum(Total)) %>%
       arrange(-media) %>% pull(fiscalia)
     orden_data_1_cd <- data_1_cd %>%
-      group_by(fiscalia) %>% summarise(media=mean(media)) %>%
+      group_by(fiscalia) %>% summarise(media=sum(Total)) %>%
       arrange(-media) %>% pull(fiscalia)
 
     # prom_fisc <- bind_rows(data_1_sd, data_1_cd) %>% ungroup() %>%
@@ -1094,31 +1079,48 @@ grafica_cargas_trabajo2 <- function(
     #   summarise(agentes=sum(Total))
 
 
-    gr_sd <- data_agrupada %>%
-      filter(detenido=="Sin detenido") %>%
+    gr_sd <- data_1_sd_mp %>% 
+      # data_agrupada %>%
+      # filter(detenido=="Sin detenido") %>%
+      mutate(fiscalia=factor(fiscalia, 
+                                 levels=orden_data_1_sd)) %>% 
       # left_join(total_mp %>%
       #             filter(detenido=="Sin detenido")
       #           , by="fiscalia") %>%
       # mutate(label=paste0(fiscalia, "\n", agentes)) %>%
-      ggplot(aes(reorder(fiscalia, -Total), Total)) +
-      geom_col(fill=rgb(46,92,129, maxColorValue = 255), alpha=.9) +
-      # geom_jitter(
-      #   data=data_1_sd %>%
-      #               left_join(total_mp %>%
-      #                           filter(detenido=="Sin detenido"),
-      #                         by="fiscalia") %>%
-      #               mutate(label=paste0(fiscalia, "\n", agentes)),
-      #             aes(x=label, y=Total), size=2.5,
-      #             color=rgb(248,175,103, maxColorValue = 255), fill=rgb(248,175,103, maxColorValue = 255), width = .1,
-      #             shape=18
-      # ) +
+      ggplot(aes(fiscalia, Total)) +
+      # geom_col(fill=rgb(46,92,129, maxColorValue = 255), alpha=.9) +
+      geom_col(
+        data=data_1_sd_mp %>%
+          group_by(fiscalia) %>% 
+          summarise(Total=mean(Total)) %>% 
+          mutate(fiscalia=factor(fiscalia, 
+                                 levels=orden_data_1_sd)),
+        aes(x=fiscalia, y=Total), 
+        fill=rgb(46,92,129, maxColorValue = 255), alpha=.9
+      ) +
+      geom_jitter(
+        data=data_1_sd_mp %>%
+          mutate(fiscalia=factor(fiscalia, 
+                                 levels=orden_data_1_sd)),
+                  aes(x=fiscalia, y=Total), size=2.5,
+                  color=rgb(248,175,103, maxColorValue = 255), fill=rgb(248,175,103, maxColorValue = 255), width = .1,
+                  shape=18
+      ) +
+
       geom_hline(
         aes(yintercept=prom_territoriales_sd$Total),
         linetype="dashed", size=1, color="#B09D83") +
       theme_light() +
-      geom_text(aes(label=round(Total, 2)), fontface="bold",
+      geom_text(data=data_1_sd_mp %>%
+                  group_by(fiscalia) %>% 
+                  summarise(Total=mean(Total)) %>% 
+                  mutate(fiscalia=factor(fiscalia, 
+                                         levels=orden_data_1_sd)),
+                aes(label=round(Total, 2)), fontface="bold",
                 position = position_stack(vjust = 1.1), size=6
       ) +
+      scale_y_continuous(breaks = seq(0,14, 2), labels=seq(0,14, 2)) +
       tema_fgj +
       geom_label(x=length(unique(data_1_sd$fiscalia)), size=6.5,
                  y=prom_territoriales_sd$Total*1.1, label=round(prom_territoriales_sd$Total,2),
@@ -1129,202 +1131,432 @@ grafica_cargas_trabajo2 <- function(
       labs(x="", y="", title = "Sin detenido") +
       tema_ppp
 
-    gr_cd <- data_agrupada %>%
-      filter(detenido=="Con detenido") %>%
-      # left_join(total_mp %>%
-      #             filter(detenido=="Con detenido"), by="fiscalia") %>%
-      # mutate(label=paste0(fiscalia, "\n", agentes)) %>%
-      ggplot(aes(reorder(fiscalia, -Total), Total)) +
-      geom_col(fill=rgb(46,92,129, maxColorValue = 255), alpha=.9) +
-      # geom_jitter(data=data_1_cd %>%
-      #               left_join(total_mp %>%
-      #                           filter(detenido=="Con detenido"),
-      #                         by="fiscalia") %>%
-      #               mutate(label=paste0(fiscalia, "\n", agentes)),
-      #             aes(x=label, y=Total), size=2,
-      #             color=rgb(248,175,103, maxColorValue = 255), fill=rgb(248,175,103, maxColorValue = 255),
-      #             width = .1,
-      #             shape=18
-      # ) +
-      geom_hline(
-        aes(yintercept=prom_territoriales_cd$Total),
-        linetype="dashed", size=1, color="#B09D83") +
-      theme_light() +
-      geom_text(aes(label=round(Total, 2)), fontface="bold",
-                position = position_stack(vjust = 1.1), size=6
-      ) +
-      tema_fgj +
-      geom_label(x=length(unique(data_1_cd$fiscalia)), size=6.5,
-                 y=prom_territoriales_cd$Total*1.1, label=round(prom_territoriales_cd$Total,2),
-                 fill="#B09D83", color="ghostwhite"
-      ) +
-      scale_fill_manual(values = colores[7:10]) +
+    # gr_cd <- data_1_cd_mp %>% 
+    #   # data_agrupada %>%
+    #   # filter(detenido=="Sin detenido") %>%
+    #   mutate(fiscalia=factor(fiscalia, 
+    #                          levels=orden_data_1_cd)) %>% 
+    #   # left_join(total_mp %>%
+    #   #             filter(detenido=="Sin detenido")
+    #   #           , by="fiscalia") %>%
+    #   # mutate(label=paste0(fiscalia, "\n", agentes)) %>%
+    #   ggplot(aes(fiscalia, Total)) +
+    #   # geom_col(fill=rgb(46,92,129, maxColorValue = 255), alpha=.9) +
+    #   geom_col(
+    #     data=data_1_cd_mp %>%
+    #       group_by(fiscalia) %>% 
+    #       summarise(Total=mean(Total)) %>% 
+    #       mutate(fiscalia=factor(fiscalia, 
+    #                              levels=orden_data_1_cd)),
+    #     aes(x=fiscalia, y=Total), 
+    #     fill=rgb(46,92,129, maxColorValue = 255), alpha=.9
+    #   ) +
+    #   geom_jitter(
+    #     data=data_1_cd_mp %>%
+    #       mutate(fiscalia=factor(fiscalia, 
+    #                              levels=orden_data_1_cd)),
+    #     aes(x=fiscalia, y=Total), size=2.5,
+    #     color=rgb(248,175,103, maxColorValue = 255), fill=rgb(248,175,103, maxColorValue = 255), width = .1,
+    #     shape=18
+    #   ) +
+    #   
+    #   geom_hline(
+    #     aes(yintercept=prom_territoriales_cd$Total),
+    #     linetype="dashed", size=1, color="#B09D83") +
+    #   theme_light() +
+    #   geom_text(data=data_1_cd_mp %>%
+    #               group_by(fiscalia) %>% 
+    #               summarise(Total=mean(Total)) %>% 
+    #               mutate(fiscalia=factor(fiscalia, 
+    #                                      levels=orden_data_1_cd)),
+    #             aes(label=round(Total, 2)), fontface="bold",
+    #             position = position_stack(vjust = 1.1), size=6
+    #   ) +
+    #   scale_y_continuous(breaks = seq(0,14, 2), labels=seq(0,14, 2)) +
+    #   tema_fgj +
+    #   geom_label(x=length(unique(data_1_sd$fiscalia)), size=6.5,
+    #              y=prom_territoriales_cd$Total*1.1, label=round(prom_territoriales_cd$Total,2),
+    #              fill="#B09D83", color="ghostwhite"
+    #   ) +
+    #   scale_fill_manual(values = colores[7:10]) +
+    #   theme(legend.position = "none") +
+    #   labs(x="", y="", title = "Con detenido") +
+    #   tema_ppp
 
-      tema_ppp +
-      labs(x="Agencia de inicio", y="",
-           # legend.position="none",
-           title = "Con detenido") +
-      theme(legend.position = "none")
-
-    gr_1 <- cowplot::plot_grid(gr_sd, gr_cd, nrow = 2)
+    gr_1 <- gr_sd
   }
-  else if (tipo=="agencia"){
+  else if (tipo=="fiscalia_con") {
+    
     periodo <-  as.integer(as_date(fecha_fin)-as_date(fecha_comienzo))+1
-
+    
+    data_1_sd_mp <- data %>%
+      filter(quincena=="Actual",
+             detenido=="Sin detenido") %>%
+      group_by(fiscalia, #detenido,
+               fecha_inicio,
+               fiscal
+      ) %>%
+      summarise(Total=n()) %>% 
+      group_by(fiscalia, fiscal) %>% 
+      summarise(Total=mean(Total))
+    
     data_1_sd <- data %>%
       filter(quincena=="Actual",
              detenido=="Sin detenido") %>%
-      group_by(ct_inicio_ap, #detenido,
-               # fecha_inicio,
-               fiscal, grupo
+      group_by(fiscalia, #detenido,
+               fecha_inicio,
+               fiscal
       ) %>%
-      summarise(Total=n()/periodo) #%>% drop_na(fiscal)
-
+      summarise(Total=n()) %>% ungroup() %>%
+      group_by(fiscalia, fecha_inicio) %>%
+      summarise(fiscales=n(),
+                Total=sum(Total, na.rm = T)
+      ) %>%
+      mutate(media=Total/fiscales)
+    
+    data_1_cd_mp <- data %>%
+      filter(quincena=="Actual",
+             detenido=="Con detenido") %>%
+      group_by(fiscalia, #detenido,
+               fecha_inicio,
+               fiscal
+      ) %>%
+      summarise(Total=n()) %>% 
+      group_by(fiscalia, fiscal) %>% 
+      summarise(Total=mean(Total))
+    
+    
+    
     data_1_cd <- data %>%
       filter(quincena=="Actual",
-             detenido=="Con detenido")%>%
-      group_by(ct_inicio_ap, #detenido,
-               # fecha_inicio,
-               fiscal, grupo
+             detenido=="Con detenido") %>%
+      group_by(fiscalia, #detenido,
+               fecha_inicio,
+               fiscal
       ) %>%
-      summarise(Total=n()/periodo) #%>% drop_na(fiscal)
-
-
-    prom_territoriales_sd <- data_1_sd %>% ungroup() %>%
+      summarise(Total=n()) %>% ungroup() %>%
+      group_by(fiscalia, fecha_inicio) %>%
+      summarise(fiscales=n(),
+                Total=sum(Total, na.rm = T)
+      ) %>%
+      mutate(media=Total/fiscales)
+    
+    # prom_territoriales_sd <- iniciadas %>%
+    #   mutate(fecha_inicio=dmy(fecha_de_inicio)) %>%
+    #   filter(fecha_inicio>=fecha_comienzo,
+    #          fecha_inicio<=fecha_fin
+    #   ) %>%
+    #   filter(!id_ap %in% data$id_ap ) %>%
+    #   mutate(detenido=case_when(
+    #     id_ap %in% flagrancias$id_ap ~ "Con detenido", T ~ "Sin detenido"
+    #   )) %>%
+    #   filter(detenido=="Sin detenido") %>%
+    #   group_by(fiscalia, fiscal) %>%
+    #   summarise(Total=n()/periodo)
+    
+    prom_territoriales_sd <- data_1_sd_mp %>% ungroup() %>%
       # group_by(fiscalia) %>%
       summarise(Total=mean(Total))
-
-
-    prom_territoriales_cd <- data_1_cd %>% ungroup() %>%
+    
+    prom_territoriales_cd <- data_1_cd_mp %>% ungroup() %>%
       # group_by(fiscalia) %>%
       summarise(Total=mean(Total))
-
+    
     orden_data_1_sd <- data_1_sd %>%
-      group_by(ct_inicio_ap) %>% summarise(media=mean(Total)) %>%
-      arrange(-media) %>% pull(ct_inicio_ap)
+      group_by(fiscalia) %>% summarise(media=sum(Total)) %>%
+      arrange(-media) %>% pull(fiscalia)
     orden_data_1_cd <- data_1_cd %>%
-      group_by(ct_inicio_ap) %>% summarise(media=mean(Total)) %>%
-      arrange(-media) %>% pull(ct_inicio_ap)
-
+      group_by(fiscalia) %>% summarise(media=sum(Total)) %>%
+      arrange(-media) %>% pull(fiscalia)
+    
     # prom_fisc <- bind_rows(data_1_sd, data_1_cd) %>% ungroup() %>%
     #   summarise(media=round(mean(Total), 2)) %>% pull(media)
-
+    
     data_agrupada <- bind_rows(data_1_sd %>%
                                  mutate(detenido="Sin detenido")
                                , data_1_cd%>%
                                  mutate(detenido="Con detenido")) %>%
       # rename(Total=media) %>%
-      group_by(ct_inicio_ap, detenido, grupo) %>%
-      summarise(Total=mean(Total)) %>%
-      mutate(fiscalia=gsub("-|[0-9]", "", ct_inicio_ap))
-
-    total_mp <- bind_rows(data_1_sd %>%
-                            mutate(detenido="Sin detenido")
-                          , data_1_cd%>%
-                            mutate(detenido="Con detenido")) %>%
-      drop_na(fiscal) %>%
-
-      # rename(Total=media) %>%
-      group_by(ct_inicio_ap, detenido, fiscal) %>%
-      summarise(Total=n()) %>% ungroup() %>%
-      mutate(id_fiscal=paste0(fiscal, "-", detenido)) %>%
-      filter(!duplicated(id_fiscal)) %>%
-      group_by(ct_inicio_ap, detenido) %>%
-      summarise(agentes=sum(Total))
-
-    gr_sd <- data_1_sd %>%
+      group_by(fiscalia, detenido) %>%
+      summarise(Total=mean(media))
+    
+    # total_mp <- bind_rows(data_1_sd %>%
+    #                         mutate(detenido="Sin detenido")
+    #                       , data_1_cd%>%
+    #                         mutate(detenido="Con detenido")) %>%
+    #   drop_na(fiscal) %>%
+    #
+    #   # rename(Total=media) %>%
+    #   group_by(fiscalia, detenido, fiscal) %>%
+    #   summarise(Total=n()) %>% ungroup() %>%
+    #   mutate(id_fiscal=paste0(fiscal, "-", detenido)) %>%
+    #   filter(!duplicated(id_fiscal)) %>%
+    #   group_by(fiscalia, detenido) %>%
+    #   summarise(agentes=sum(Total))
+    
+    
+    # gr_sd <- data_1_sd_mp %>% 
+    #   # data_agrupada %>%
+    #   # filter(detenido=="Sin detenido") %>%
+    #   mutate(fiscalia=factor(fiscalia, 
+    #                          levels=orden_data_1_sd)) %>% 
+    #   # left_join(total_mp %>%
+    #   #             filter(detenido=="Sin detenido")
+    #   #           , by="fiscalia") %>%
+    #   # mutate(label=paste0(fiscalia, "\n", agentes)) %>%
+    #   ggplot(aes(fiscalia, Total)) +
+    #   # geom_col(fill=rgb(46,92,129, maxColorValue = 255), alpha=.9) +
+    #   geom_col(
+    #     data=data_1_sd_mp %>%
+    #       group_by(fiscalia) %>% 
+    #       summarise(Total=mean(Total)) %>% 
+    #       mutate(fiscalia=factor(fiscalia, 
+    #                              levels=orden_data_1_sd)),
+    #     aes(x=fiscalia, y=Total), 
+    #     fill=rgb(46,92,129, maxColorValue = 255), alpha=.9
+    #   ) +
+    #   geom_jitter(
+    #     data=data_1_sd_mp %>%
+    #       mutate(fiscalia=factor(fiscalia, 
+    #                              levels=orden_data_1_sd)),
+    #     aes(x=fiscalia, y=Total), size=2.5,
+    #     color=rgb(248,175,103, maxColorValue = 255), fill=rgb(248,175,103, maxColorValue = 255), width = .1,
+    #     shape=18
+    #   ) +
+    #   
+    #   geom_hline(
+    #     aes(yintercept=prom_territoriales_sd$Total),
+    #     linetype="dashed", size=1, color="#B09D83") +
+    #   theme_light() +
+    #   geom_text(data=data_1_sd_mp %>%
+    #               group_by(fiscalia) %>% 
+    #               summarise(Total=mean(Total)) %>% 
+    #               mutate(fiscalia=factor(fiscalia, 
+    #                                      levels=orden_data_1_sd)),
+    #             aes(label=round(Total, 2)), fontface="bold",
+    #             position = position_stack(vjust = 1.1), size=6
+    #   ) +
+    #   scale_y_continuous(breaks = seq(0,14, 2), labels=seq(0,14, 2)) +
+    #   tema_fgj +
+    #   geom_label(x=length(unique(data_1_sd$fiscalia)), size=6.5,
+    #              y=prom_territoriales_sd$Total*1.1, label=round(prom_territoriales_sd$Total,2),
+    #              fill="#B09D83", color="ghostwhite"
+    #   ) +
+    #   scale_fill_manual(values = colores[7:10]) +
+    #   theme(legend.position = "none") +
+    #   labs(x="", y="", title = "Sin detenido") +
+    #   tema_ppp
+    
+    gr_cd <- data_1_cd_mp %>% 
+      # data_agrupada %>%
       # filter(detenido=="Sin detenido") %>%
-      mutate(fiscalia=gsub("-|[0-9]", "", ct_inicio_ap)) %>%
-      left_join(total_mp %>%
-                  filter(detenido=="Sin detenido")
-                , by="ct_inicio_ap") %>%
-      mutate(label=paste0(ct_inicio_ap, "\n", agentes)) %>%
-      ggplot(aes(reorder(label, -Total), Total)) +
-      geom_col(data=. %>%
-                 group_by(fiscalia, ct_inicio_ap) %>%
-                 summarise(Total=mean(Total)) %>%
-                 left_join(total_mp %>%
-                             filter(detenido=="Sin detenido")
-                           , by="ct_inicio_ap") %>%
-                 mutate(label=paste0(ct_inicio_ap, "\n", agentes)),
-               fill=rgb(46,92,129, maxColorValue = 255), alpha=.9) +
+      mutate(fiscalia=factor(fiscalia, 
+                             levels=orden_data_1_cd)) %>% 
+      # left_join(total_mp %>%
+      #             filter(detenido=="Sin detenido")
+      #           , by="fiscalia") %>%
+      # mutate(label=paste0(fiscalia, "\n", agentes)) %>%
+      ggplot(aes(fiscalia, Total)) +
+      # geom_col(fill=rgb(46,92,129, maxColorValue = 255), alpha=.9) +
+      geom_col(
+        data=data_1_cd_mp %>%
+          group_by(fiscalia) %>% 
+          summarise(Total=mean(Total)) %>% 
+          mutate(fiscalia=factor(fiscalia, 
+                                 levels=orden_data_1_cd)),
+        aes(x=fiscalia, y=Total), 
+        fill=rgb(46,92,129, maxColorValue = 255), alpha=.9
+      ) +
       geom_jitter(
-        aes(x=label, y=Total), size=2.5,
-        color=rgb(248,175,103, maxColorValue = 255), fill=rgb(248,175,103, maxColorValue = 255),
-        width = .1,
+        data=data_1_cd_mp %>%
+          mutate(fiscalia=factor(fiscalia, 
+                                 levels=orden_data_1_cd)),
+        aes(x=fiscalia, y=Total), size=2.5,
+        color=rgb(248,175,103, maxColorValue = 255), fill=rgb(248,175,103, maxColorValue = 255), width = .1,
         shape=18
       ) +
-      geom_hline(
-        aes(yintercept=prom_territoriales_sd$Total),
-        linetype="dashed", size=1, color="#B09D83") +
-      theme_light() +
-      geom_text(data=. %>%
-                  group_by(fiscalia, ct_inicio_ap) %>%
-                  summarise(Total=mean(Total)) %>%
-                  left_join(total_mp %>%
-                              filter(detenido=="Sin detenido")
-                            , by="ct_inicio_ap") %>%
-                  mutate(label=paste0(ct_inicio_ap, "\n", agentes)),
-                aes(label=round(Total, 2)),
-                position = position_stack(vjust = 1.1), size=4.5
-      ) +
-      tema_fgj +
-      geom_label(x=length(unique(data_1_sd$ct_inicio_ap)), size=4.5,
-                 y=prom_territoriales_sd$Total*1.1, label=round(prom_territoriales_sd$Total,2),
-                 fill="#B09D83", color="ghostwhite"
-      ) +
-      scale_fill_manual(values = colores[7:10]) + tema_ppp +
-      theme(legend.position = "none",
-            axis.text.x = element_text(size = 9, angle=90)) +
-      labs(x="", y="", title = "Sin detenido")
-
-
-    gr_cd <- data_1_cd %>%
-      mutate(fiscalia=gsub("-|[0-9]", "", ct_inicio_ap)) %>%
-      left_join(total_mp %>%
-                  filter(detenido=="Con detenido")
-                , by="ct_inicio_ap") %>%
-      mutate(label=paste0(ct_inicio_ap, "\n", agentes)) %>%
-      ggplot(aes(reorder(label, -Total), Total)) +
-      geom_col(data=. %>%
-                 group_by(fiscalia, ct_inicio_ap) %>%
-                 summarise(Total=mean(Total)) %>%
-                 left_join(total_mp %>%
-                             filter(detenido=="Con detenido")
-                           , by="ct_inicio_ap") %>%
-                 mutate(label=paste0(ct_inicio_ap, "\n", agentes)),
-               fill=rgb(46,92,129, maxColorValue = 255), alpha=.9) +
-      geom_jitter(
-        aes(x=label, y=Total), size=2.5,
-        color=rgb(248,175,103, maxColorValue = 255), fill=rgb(248,175,103, maxColorValue = 255),
-        width = .1,
-        shape=18
-      ) +
+      
       geom_hline(
         aes(yintercept=prom_territoriales_cd$Total),
         linetype="dashed", size=1, color="#B09D83") +
       theme_light() +
-      geom_text(data=. %>%
-                  group_by(fiscalia, ct_inicio_ap) %>%
-                  summarise(Total=mean(Total)) %>%
-                  left_join(total_mp %>%
-                              filter(detenido=="Con detenido")
-                            , by="ct_inicio_ap") %>%
-                  mutate(label=paste0(ct_inicio_ap, "\n", agentes)),
-                aes(label=round(Total, 2)),
-                position = position_stack(vjust = 1.1), size=4.5
+      geom_text(data=data_1_cd_mp %>%
+                  group_by(fiscalia) %>% 
+                  summarise(Total=mean(Total)) %>% 
+                  mutate(fiscalia=factor(fiscalia, 
+                                         levels=orden_data_1_cd)),
+                aes(label=round(Total, 2)), fontface="bold",
+                position = position_stack(vjust = 1.1), size=6
       ) +
+      scale_y_continuous(breaks = seq(0,14, 2), labels=seq(0,14, 2)) +
       tema_fgj +
-      geom_label(x=length(unique(data_1_cd$ct_inicio_ap)), size=4.5,
+      geom_label(x=length(unique(data_1_sd$fiscalia)), size=6.5,
                  y=prom_territoriales_cd$Total*1.1, label=round(prom_territoriales_cd$Total,2),
                  fill="#B09D83", color="ghostwhite"
       ) +
-      scale_fill_manual(values = colores[7:10]) + tema_ppp +
-      theme(legend.position = "none",
-            axis.text.x = element_text(size = 9, angle=90)) +
-      labs(x="", y="", title = "Con detenido")
+      scale_fill_manual(values = colores[7:10]) +
+      theme(legend.position = "none") +
+      labs(x="", y="", title = "Con detenido") +
+      tema_ppp
+    
+    gr_1 <- gr_cd
+  }
+  else if (tipo=="agencia"){
+    periodo <-  as.integer(as_date(fecha_fin)-as_date(fecha_comienzo))+1
 
-    gr_1 <- cowplot::plot_grid(gr_sd, gr_cd, nrow = 2)
+    
+    data_1_cd_mp <- data %>%
+      filter(quincena=="Actual",
+             detenido=="Con detenido") %>%
+      group_by(ct_inicio_ap, #detenido,
+               fecha_inicio,
+               fiscal
+      ) %>%
+      summarise(Total=n()) %>% 
+      group_by(ct_inicio_ap, fiscal) %>% 
+      summarise(Total=mean(Total))
+    
+    
+    
+    data_1_cd <- data %>%
+      filter(quincena=="Actual",
+             detenido=="Con detenido") %>%
+      group_by(ct_inicio_ap, #detenido,
+               fecha_inicio,
+               fiscal
+      ) %>%
+      summarise(Total=n()) %>% ungroup() %>%
+      group_by(ct_inicio_ap, fecha_inicio) %>%
+      summarise(fiscales=n(),
+                Total=sum(Total, na.rm = T)
+      ) %>%
+      mutate(media=Total/fiscales)
+    
+    # prom_territoriales_sd <- iniciadas %>%
+    #   mutate(fecha_inicio=dmy(fecha_de_inicio)) %>%
+    #   filter(fecha_inicio>=fecha_comienzo,
+    #          fecha_inicio<=fecha_fin
+    #   ) %>%
+    #   filter(!id_ap %in% data$id_ap ) %>%
+    #   mutate(detenido=case_when(
+    #     id_ap %in% flagrancias$id_ap ~ "Con detenido", T ~ "Sin detenido"
+    #   )) %>%
+    #   filter(detenido=="Sin detenido") %>%
+    #   group_by(fiscalia, fiscal) %>%
+    #   summarise(Total=n()/periodo)
+    
+    # prom_territoriales_sd <- data_1_sd_mp %>% ungroup() %>%
+    #   # group_by(fiscalia) %>%
+    #   summarise(Total=mean(Total))
+    
+    prom_territoriales_cd <- data_1_cd_mp %>% ungroup() %>%
+      filter(!ct_inicio_ap %in% c("IZP-9", "IZP-4", "COY-3", "IZP-8")) %>% 
+      # group_by(fiscalia) %>%
+      summarise(Total=mean(Total))
+    
+    # orden_data_1_sd <- data_1_sd %>%
+    #   group_by(ct_inicio_ap) %>% summarise(media=sum(Total)) %>%
+    #   arrange(-media) %>% pull(ct_inicio_ap)
+    orden_data_1_cd <- data_1_cd %>%
+      # filter(!ct_inicio_ap %in% c("IZP-9", "IZP-4", "COY-3", "IZP-8")) %>% 
+      group_by(ct_inicio_ap) %>% summarise(media=sum(Total)) %>%
+      arrange(-media) %>% pull(ct_inicio_ap)
+    
+    # prom_fisc <- bind_rows(data_1_sd, data_1_cd) %>% ungroup() %>%
+    #   summarise(media=round(mean(Total), 2)) %>% pull(media)
+    
+    # data_agrupada <- bind_rows(data_1_sd %>%
+    #                              mutate(detenido="Sin detenido")
+    #                            , data_1_cd%>%
+    #                              mutate(detenido="Con detenido")) %>%
+    #   # rename(Total=media) %>%
+    #   group_by(fiscalia, detenido) %>%
+    #   summarise(Total=mean(media))
+    
+   
+    # gr_sd <- data_agrupada %>%
+    #   filter(detenido=="Sin detenido") %>%
+    #   mutate(ct_inicio_ap=factor(ct_inicio_ap, 
+    #                              levels=orden_data_1_sd
+    #                              )) %>% 
+    #   # ggplot(aes(reorder(ct_inicio_ap, -Total), Total)) +
+    #   ggplot(aes(ct_inicio_ap, Total)) +
+    #   geom_col(fill=rgb(46,92,129, maxColorValue = 255), alpha=.9) +
+    #   geom_hline(
+    #     aes(yintercept=prom_territoriales_sd$Total),
+    #     linetype="dashed", size=1, color="#B09D83") +
+    #   theme_light() +
+    #   geom_text(aes(label=round(Total, 2)), fontface="bold",
+    #             position = position_stack(vjust = 1.1), size=6
+    #   ) +
+    #   tema_fgj +
+    #   geom_label(x=length(unique(data_agrupada$fiscalia)), size=6.5,
+    #              y=prom_territoriales_sd$Total*1.1, label=round(prom_territoriales_sd$Total,2),
+    #              fill="#B09D83", color="ghostwhite"
+    #   ) +
+    #   scale_fill_manual(values = colores[7:10]) +
+    #   theme(legend.position = "none") +
+    #   labs(x="", y="", title = "Sin detenido") +
+    #   tema_ppp
+
+
+    gr_cd <- data_1_cd_mp %>% 
+      # data_agrupada %>%
+      # filter(detenido=="Sin detenido") %>%
+      mutate(ct_inicio_ap=factor(ct_inicio_ap, 
+                             levels=orden_data_1_cd)) %>% 
+      # left_join(total_mp %>%
+      #             filter(detenido=="Sin detenido")
+      #           , by="fiscalia") %>%
+      # mutate(label=paste0(fiscalia, "\n", agentes)) %>%
+      ggplot(aes(ct_inicio_ap, Total)) +
+      # geom_col(fill=rgb(46,92,129, maxColorValue = 255), alpha=.9) +
+      geom_col(
+        data=data_1_cd_mp %>%
+          group_by(ct_inicio_ap) %>% 
+          summarise(Total=mean(Total)) %>% 
+          mutate(ct_inicio_ap=factor(ct_inicio_ap, 
+                                 levels=orden_data_1_cd)),
+        aes(x=ct_inicio_ap, y=Total), 
+        fill=rgb(46,92,129, maxColorValue = 255), alpha=.9
+      ) +
+      geom_jitter(
+        data=data_1_cd_mp %>%
+          mutate(ct_inicio_ap=factor(ct_inicio_ap, 
+                                 levels=orden_data_1_cd)),
+        aes(x=ct_inicio_ap, y=Total), size=2.5,
+        color=rgb(248,175,103, maxColorValue = 255), fill=rgb(248,175,103, maxColorValue = 255), width = .1,
+        shape=18
+      ) +
+      
+      geom_hline(
+        aes(yintercept=prom_territoriales_cd$Total),
+        linetype="dashed", size=1, color="#B09D83") +
+      theme_light() +
+      geom_text(data=data_1_cd_mp %>%
+                  group_by(ct_inicio_ap) %>% 
+                  summarise(Total=mean(Total)) %>% 
+                  mutate(ct_inicio_ap=factor(ct_inicio_ap, 
+                                         levels=orden_data_1_cd)),
+                aes(label=round(Total, 2)), fontface="bold",
+                position = position_stack(vjust = 1.1), size=6
+      ) +
+      scale_y_continuous(breaks = seq(0,14, 2), labels=seq(0,14, 2)) +
+      tema_fgj +
+      geom_label(x=length(unique(data_1_cd$ct_inicio_ap)), size=6.5,
+                 y=prom_territoriales_cd$Total*1.1, label=round(prom_territoriales_cd$Total,2),
+                 fill="#B09D83", color="ghostwhite"
+      ) +
+      scale_fill_manual(values = colores[7:10]) +
+      
+      labs(x="", y="", title = "Con detenido") +
+      tema_ppp +
+      theme(legend.position = "none", 
+            axis.text.x = element_text(angle = 90)
+            ) 
+
+    # gr_1 <- cowplot::plot_grid(gr_sd, gr_cd, nrow = 2)
+    gr_1 <- gr_cd
   }
 
   
@@ -1335,62 +1567,199 @@ grafica_cargas_trabajo2 <- function(
   
 }
 
-gr_gam <- grafica_cargas_trabajo(datos = iniciadas, 
-                                 fiscalia_analisis = "GAM", 
-                                 fecha_comienzo = "2025-01-01", 
-                                 fecha_fin = "2025-01-15", 
-                                 tipo = "promedio"
-                                 )
+# gr_gam <- grafica_cargas_trabajo(datos = iniciadas, 
+#                                  fiscalia_analisis = "GAM", 
+#                                  fecha_comienzo = "2024-10-01", 
+#                                  fecha_fin = "2025-01-31", 
+#                                  tipo = "mp"
+#                                  )
 
-total_iniciadas_quincena <-  juntas %>% 
+fecha_comienzo<-as_date("2024-10-01")
+fecha_fin<-as_date("2025-01-31")
+#bases para la gráfica de cargas de trabajo2 (verisón nueva)
+data <- juntas %>% 
   filter(grepl(fiscalias_territoriales, fiscalia),
          !grepl("CJM|URI|AOP", fiscalia), 
          fiscalia!="STCMH") %>% 
-  mutate(fecha_inicio=dmy(fecha_de_inicio)) %>% 
-  filter(fecha_inicio>=fecha_comienzo, 
+  mutate(fecha_inicio=as_date(fecha_de_inicio)) %>% 
+  filter(fecha_inicio>=fecha_comienzo,
          fecha_inicio<=fecha_fin
-  ) %>% 
+  ) %>%
   mutate(quincena=case_when(
     fecha_inicio>=fecha_comienzo ~ "Actual",
     T ~ "Anterior"
-  ), 
+  ),
   detenido=case_when(
-    id_ap %in% flagrancias$id_ap ~ "Con detenido", 
+    id_ap %in% flagrancias$id_ap ~ "Con detenido",
     T ~ "Sin detenido"
   )
-  ) %>% 
-  group_by(fiscalia, detenido) %>% 
-  summarise(Total=n())
+  ) %>% drop_na(fiscal)
 
-gr_1 <- grafica_cargas_trabajo(datos = juntas %>% 
+#####
+
+#agrupada por fiscalía versión nueva
+data_1_sd <- data %>%
+  filter(quincena=="Actual",
+         detenido=="Sin detenido") %>%
+  group_by(fiscalia, #detenido,
+           fecha_inicio,
+           fiscal
+  ) %>%
+  summarise(Total=n()) %>% ungroup() %>%
+  group_by(fiscalia, fecha_inicio) %>%
+  summarise(fiscales=n(),
+            Total=sum(Total, na.rm = T)
+  ) %>%
+  mutate(media=Total/fiscales)
+
+data_1_cd <- data %>%
+  filter(quincena=="Actual",
+         detenido=="Con detenido") %>%
+  group_by(fiscalia, #detenido,
+           fecha_inicio,
+           fiscal
+  ) %>%
+  summarise(Total=n()) %>% ungroup() %>%
+  group_by(fiscalia, fecha_inicio) %>%
+  summarise(fiscales=n(),
+            Total=sum(Total, na.rm = T)
+  ) %>%
+  mutate(media=Total/fiscales)
+
+
+bind_rows(data_1_sd %>%mutate(detenido="Sin detenido"), data_1_cd%>%
+            mutate(detenido="Con detenido"))  %>% 
+  write.csv("H:/Mi unidad/Evaluacion_agencias/bases/data_graf_1_250225.csv",
+            row.names = F)
+
+#####
+#agrupada por fiscalía versión vieja
+#tablas para cargas de trabajo versión vieja
+periodo <-  as.integer(as_date(fecha_fin)-as_date(fecha_comienzo))+1
+data_1_sd <- data %>% 
+  filter(quincena=="Actual", 
+         detenido=="Sin detenido") %>% 
+  group_by(fiscalia, #detenido, 
+           # fecha_inicio, 
+           fiscal, grupo
+  ) %>% 
+  summarise(Total=n()/periodo) 
+
+data_1_cd <- data %>% 
+  filter(quincena=="Actual", 
+         detenido=="Con detenido")%>% 
+  group_by(fiscalia, #detenido, 
+           # fecha_inicio, 
+           fiscal, grupo
+  ) %>% 
+  summarise(Total=n()/periodo) 
+
+bind_rows(data_1_sd %>% 
+            mutate(detenido="Sin detenido")
+          , data_1_cd%>% 
+            mutate(detenido="Con detenido")) %>% 
+  write.csv("H:/Mi unidad/Evaluacion_agencias/bases/data_graf_1_250225_version_vieja.csv",
+            row.names = F)
+
+#####base para Marey#####
+data_1_sd <- data %>%
+  filter(quincena=="Actual",
+         detenido=="Sin detenido") %>%
+  group_by(ct_inicio_ap, #detenido,
+           #fecha_inicio,
+           fiscal
+  ) %>%
+  summarise(Total=n()) %>% ungroup() %>%
+  group_by(ct_inicio_ap) %>%
+  summarise(fiscales=n(),
+            Total=sum(Total, na.rm = T)
+  ) %>%
+  mutate(media=Total/fiscales)
+
+data_1_cd <- data %>%
+  filter(quincena=="Actual",
+         detenido=="Con detenido") %>%
+  group_by(ct_inicio_ap, #detenido,
+           #fecha_inicio,
+           fiscal
+  ) %>%
+  summarise(Total=n()) %>% ungroup() %>%
+  group_by(ct_inicio_ap) %>%
+  summarise(fiscales=n(),
+            Total=sum(Total, na.rm = T)
+  ) %>%
+  mutate(media=Total/fiscales)
+
+
+bind_rows(data_1_sd %>%mutate(detenido="Sin detenido"), data_1_cd%>%
+            mutate(detenido="Con detenido")) %>% 
+  write.csv("base_agencias_mps_totales_fer.csv", row.names = F)
+
+gr_fisc_sd <- grafica_cargas_trabajo(datos = juntas %>% 
                                  filter(grepl(fiscalias_territoriales, fiscalia),
                                         !grepl("CJM|URI|AOP", fiscalia), 
                                         fiscalia!="STCMH"), 
                                  #fiscalia_analisis = "GAM", 
-                               fecha_comienzo = "2025-01-01", 
-                               fecha_fin = "2025-01-15", 
+                               fecha_comienzo = "2024-10-01", 
+                               fecha_fin = "2025-01-31", 
                                  tipo = "mp"
 )
 
-gr_1_nueva <- grafica_cargas_trabajo2(datos = juntas %>% 
+ggsave(plot = gr_1, 
+       "gr_1_250225_fiscalia.svg", width = 14, height = 6.5
+)
+
+#####
+gr_fisc_sd <- grafica_cargas_trabajo2(datos = juntas %>% 
                                  filter(grepl(fiscalias_territoriales, fiscalia),
                                         !grepl("CJM|URI|AOP", fiscalia), 
                                         fiscalia!="STCMH"), 
                                #fiscalia_analisis = "GAM", 
                                fecha_comienzo = "2024-10-01", 
-                               fecha_fin = "2025-01-31", 
-                               tipo = "mp"
+                               fecha_fin = "2025-01-15", 
+                               tipo = "fiscalia_sin"
 )
 
-ggsave(plot = gr_1, 
-       "gr_1_190225_fiscalia.svg", width = 14, height = 6.5
+ggsave(plot = gr_fisc_sd, 
+       "gr_1_260225_fiscalia_nueva_sd.svg", width = 14, height = 6.5
        )
 
+gr_fisc_cd <- grafica_cargas_trabajo2(datos = juntas %>% 
+                                        filter(grepl(fiscalias_territoriales, fiscalia),
+                                               !grepl("CJM|URI|AOP", fiscalia), 
+                                               fiscalia!="STCMH"), 
+                                      #fiscalia_analisis = "GAM", 
+                                      fecha_comienzo = "2024-10-01", 
+                                      fecha_fin = "2025-01-15", 
+                                      tipo = "fiscalia_con"
+)
 
-total_iniciadas_quincena_agencia <-  iniciadas %>% 
+ggsave(plot = gr_fisc_cd, 
+       "gr_1_260225_fiscalia_nueva_cd.svg", width = 14, height = 6.5
+)
+
+
+
+gr_1_nueva_agencia <- grafica_cargas_trabajo2(datos = juntas %>% 
+                                        filter(grepl(fiscalias_territoriales, fiscalia),
+                                               !grepl("CJM|URI|AOP", fiscalia), 
+                                               fiscalia!="STCMH"), 
+                                      #fiscalia_analisis = "GAM", 
+                                      fecha_comienzo = "2024-10-01", 
+                                      fecha_fin = "2025-01-15", 
+                                      tipo = "agencia"
+)
+
+ggsave(plot = gr_1_nueva_agencia, 
+       "gr_1_260225_agencia_cd_nueva.svg", width = 14, height = 6.5
+)
+
+
+total_iniciadas_quincena_agencia <-  juntas %>% 
   filter(grepl(fiscalias_territoriales, fiscalia),
-         !grepl("CJM|URI|AOP", fiscalia)) %>% 
-  mutate(fecha_inicio=dmy(fecha_de_inicio)) %>% 
+         !grepl("CJM|URI|AOP", fiscalia), 
+         fiscalia!="STCMH") %>% 
+  mutate(fecha_inicio=as_date(fecha_de_inicio)) %>% 
   filter(fecha_inicio>=fecha_comienzo, 
          fecha_inicio<=fecha_fin
   ) %>% 
@@ -1406,18 +1775,33 @@ total_iniciadas_quincena_agencia <-  iniciadas %>%
   group_by(ct_inicio_ap, detenido) %>% 
   summarise(Total=n())
 
-gr_agencia <- grafica_cargas_trabajo(datos = iniciadas %>% 
-                                 filter(grepl(fiscalias_territoriales, fiscalia),
-                                        !grepl("CJM|URI|AOP", fiscalia),
-                                 ), 
+gr_agencia_vieja <- grafica_cargas_trabajo(datos = juntas %>% 
+                                       filter(grepl(fiscalias_territoriales, fiscalia),
+                                              !grepl("CJM|URI|AOP", fiscalia), 
+                                              fiscalia!="STCMH"), 
                                #fiscalia_analisis = "GAM", 
-                               fecha_comienzo = "2025-01-01", 
-                               fecha_fin = "2025-01-15", 
+                               fecha_comienzo = "2024-10-01", 
+                               fecha_fin = "2025-01-31", 
                                tipo = "agencia"
 )
 
-ggsave(plot = gr_agencia, 
-       "gr_1_agencia_190225.svg", width = 14, height = 6.5
+ggsave(plot = gr_agencia_vieja, 
+       "gr_1_agencia_250225_vieja.svg", width = 14, height = 6.5
+)
+
+
+gr_agencia_nueva <- grafica_cargas_trabajo2(datos = juntas %>% 
+                                             filter(grepl(fiscalias_territoriales, fiscalia),
+                                                    !grepl("CJM|URI|AOP", fiscalia), 
+                                                    fiscalia!="STCMH"), 
+                                           #fiscalia_analisis = "GAM", 
+                                           fecha_comienzo = "2024-10-01", 
+                                           fecha_fin = "2025-01-31", 
+                                           tipo = "agencia"
+)
+
+ggsave(plot = gr_agencia_nueva, 
+       "gr_1_agencia_250225_nueva.svg", width = 14, height = 6.5
 )
 
 
@@ -1589,6 +1973,7 @@ gr_libertad <- function(
   
   libertades_importantes <- setdiff(unique(flagrancias$libertad_homologada), c("No se formuló imputación", "Acuerdo reparatorio", 
                                                                                "Pendientes por identificar", "Criterio de oportunidad", "0"))
+  # no delito, no flagrancia, ilegal detencion, no vinculacion y vinculacion proceso
   
   data_der <- flagr %>% 
     mutate(criterio=case_when( 
@@ -1597,32 +1982,60 @@ gr_libertad <- function(
            
     )
     ) %>% 
-    # filter(!id_ap %in% flagr) %>% 
-    mutate(res_puestas=case_when(
-      criterio==1 & libertad_homologada %in% c("Artículo 140 CNPP", "Personas mayores de 65 años")~ "Artículo 140", 
-      criterio==1 & libertad_homologada %in% c("Falta de querella") ~"Falta de querella", 
-      criterio==1 & libertad_homologada %in% "Perdón de la víctima u ofendido" ~ "Perdón",
-      criterio==1 & libertad_homologada %in% c("Hechos no flagrantes", "No se cumplen los supuestos de la flagrancia") ~ "No flagrancias", 
-      criterio==1 & libertad_homologada %in% c("Hechos no son constitutivos de delito", "No hay responsabilidad penal del imputado") ~ "No delito",
+    mutate(
+      legal=ifelse(judicializacion==1 &  legalidad_de_la_detencion==1, 1, 0),
+      no_legal=ifelse(judicializacion==1 & legalidad_de_la_detencion==0, 1, 0), 
+      vinculacion=case_when(
+        legal==1 &
+          vinculacion_a_proceso_por_persona==1 ~ 1,
+        T ~0),
+      no_vinculacion=case_when(
+        legal==1 &
+          vinculacion_a_proceso_por_persona==0 ~ 1,
+        T ~0), 
+      # prision_preventiva_justificada=sum(prision_preventiva_justificada, na.rm = T),
+      # prision_preventiva_oficiosa=sum(prision_preventiva_oficiosa, na.rm = T),
+      prision=case_when(
+        prision_preventiva_justificada>0 ~ 1, 
+        prision_preventiva_oficiosa>0 ~ 1, T ~0
+      )
+      ) %>% 
+    mutate(
+      res_puestas=case_when(
+      # criterio==1 & libertad_homologada %in% c("Artículo 140 CNPP", "Personas mayores de 65 años")~ "Artículo 140", 
+        # criterio==1 & libertad_homologada %in% c("Falta de querella", "Perdón de la víctima u ofendido",
+        #                                          "Hechos no flagrantes", "No se cumplen los supuestos de la flagrancia",
+        #                                          "Hechos no son constitutivos de delito", "No hay responsabilidad penal del imputado") ~"Libertad en MP",
+        libertad==1 ~"Libertad en MP",
+        # criterio==1 & libertad_homologada %in% c("Falta de querella") ~"Falta de querella", 
+      # criterio==1 & libertad_homologada %in% "Perdón de la víctima u ofendido" ~ "Perdón",
+      # criterio==1 & libertad_homologada %in% c("Hechos no flagrantes", "No se cumplen los supuestos de la flagrancia") ~ "No flagrancias", 
+      # criterio==1 & libertad_homologada %in% c("Hechos no son constitutivos de delito", "No hay responsabilidad penal del imputado") ~ "No delito",
+      no_legal==1 ~ "Ilegal detención",
+      prision==1 ~ "Prisión preventiva",
+      vinculacion==1 ~ "Vinculación", 
+      no_vinculacion==1 ~ "No vinculación",
+      # incompetencia==1 ~ "Incompetencia",
       # libertad_homologada %in% "Criterio de oportunidad" ~"Criterio de oportunidad",
       T ~ "Otros"
-    )) %>% 
+    )) %>% filter(res_puestas!="Otros") %>% 
     mutate(siglas_fiscalia_inicio=gsub("FI", "", siglas_fiscalia_inicio)) %>% 
     # mutate(res_puestas=substr(res_puestas, 4, nchar(res_puestas))) %>% 
     group_by(fiscalia=siglas_fiscalia_inicio, res_puestas, 
              criterio) %>% 
     summarise(Total=n(), .groups = "drop") %>% group_by(fiscalia) %>% 
     mutate(Porcentaje=Total/sum(Total)) %>% ungroup() %>% 
-    filter(criterio==1) %>% 
+    # filter(criterio==1) %>% 
+    filter(res_puestas!="Otros") %>% 
     complete(fiscalia=nombres_fisc, 
              res_puestas=unique(.$res_puestas), 
              fill = list(Total=0, Porcentaje=0, 
                          criterio=1)
     ) %>% 
-    mutate(res_puestas=factor(res_puestas, levels = c("No delito", "No flagrancias", "Artículo 140", 
-                                                      "Perdón", "Falta de querella"
+    mutate(res_puestas=factor(res_puestas, levels = c("Libertad en MP","Ilegal detención", 
+                                                      "No vinculación", "Vinculación", 
+                                                      "Prisión preventiva"
     ))) 
-    
     # bind_rows(flagr_terri) %>% 
     
   #orden a partir de 140 y sucesivo
@@ -1638,21 +2051,19 @@ gr_libertad <- function(
   #   pull(fiscalia) %>%
   #   unique()
   
-  # orden_fisc <- data_der %>% 
-  #   group_by(fiscalia) %>% 
-  #   summarise(Total=sum(Total)) %>% 
-  #   arrange(-Total) %>% 
-  #   pull(fiscalia)
-  
-  data
-  
+  orden_fisc <- flagr %>% 
+    mutate(siglas_fiscalia_inicio=gsub("FI", "", siglas_fiscalia_inicio)) %>% 
+    group_by(siglas_fiscalia_inicio) %>% 
+    summarise(Total=n()) %>% arrange(-Total) %>% 
+    pull(siglas_fiscalia_inicio)
+
   # alcaldias_faltantes <- setdiff(nombres_fisc, orden_fisc)
   # 
   # alcaldias_completas <- c(orden_fisc, alcaldias_faltantes)
     
   library(forcats)
   gr_det <- data_der %>%
-    mutate(fiscalia=factor(fiscalia, levels=rev(sort(nombres_fisc)))) %>%
+    mutate(fiscalia=factor(fiscalia, levels=rev(orden_fisc))) %>%
     ggplot(aes(fiscalia, Porcentaje, fill=fct_rev(res_puestas), 
                # group=fct_rev(res_puestas)
                )) +
@@ -1661,7 +2072,9 @@ gr_libertad <- function(
     geom_text_repel(data=. %>%
                 filter(Total>0),
                 aes(label=paste0(percent(Porcentaje, .1), " (", comma(Total), ")")),
-              color="black", size=6, fontface="bold", max.time = 1.5,
+              # color="black",
+              color="white",
+              size=6, fontface="bold", max.time = 1.5,
               position = position_stack(vjust = 0.7), direction = "x"
     ) +
     scale_y_continuous(labels = percent) +
@@ -1669,7 +2082,9 @@ gr_libertad <- function(
          fill=""
     ) +
     theme(legend.position = "bottom")+
-    scale_fill_manual(values = rev(c( "#2E5C81", "#5D818B", "#59595C", "#A7A8AC", "#FDE4CB")), 
+    scale_fill_manual(values = rev(c( "#929292", "#caeefb", "#a6caec", "#d9d9d9", 
+                                               "#000000", 
+                                               "#a9d18e", colores[7]  )), 
                       guide = guide_legend(reverse = TRUE)
                       )
 
@@ -1677,23 +2092,128 @@ gr_libertad <- function(
 }
 
 gr_libertades <- gr_libertad(#fiscalia_analisis = "GAM", 
-  fecha_comienzo = "2025-01-15", 
+  fecha_comienzo = "2025-01-16", 
   fecha_fin = "2025-02-15"
 )
 
 ggsave(plot = gr_libertades, 
-       "gr_libertad_mes_250225.svg", width = 16, height = 6
+       "gr_puestas_dispocion_mes_260225.svg", width = 16, height = 6
 )
 
 
 gr_libertades_hist <- gr_libertad(#fiscalia_analisis = "GAM", 
   fecha_comienzo = "2024-01-01", 
-  fecha_fin = "2025-02-15"
+  fecha_fin = "2025-01-15"
 )
 
 ggsave(plot = gr_libertades_hist, 
-       "gr_libertad_quincena_hist_250225.svg", width = 16, height = 6
+       "gr_puestas_dispocion_hist_260225_blanco.svg", width = 16, height = 6
 )
+
+
+#####función para lbiertades por 140
+gr_libertad_140 <- function(
+    # fiscalia_analisis=siglas_fiscalia_analisis,
+  fecha_comienzo=inicio_quincena, 
+  fecha_fin=final_quincena
+) {
+  flagr <- flagrancias %>% 
+    filter(#grepl(fiscalia_analisis, agencia_ini), 
+      fecha_inicio>=fecha_comienzo, 
+      fecha_inicio<=fecha_fin
+    ) %>% 
+    filter(subprocuraduria=="COORDINACIÓN GENERAL DE INVESTIGACIÓN TERRITORIAL", 
+           siglas_fiscalia_inicio!="FIDAMPU"
+    ) #%>% 
+
+  
+  nombres_fisc <- flagrancias %>% 
+    filter(subprocuraduria=="COORDINACIÓN GENERAL DE INVESTIGACIÓN TERRITORIAL", 
+           siglas_fiscalia_inicio!="FIDAMPU"
+    ) %>% 
+    filter(res_puestas=="1. Libertad MP") %>% 
+    mutate(fiscalia=gsub("FI", "", siglas_fiscalia_inicio)) %>% 
+    pull(fiscalia) %>% unique()
+  
+  libertades_importantes <- setdiff(unique(flagrancias$libertad_homologada), c("No se formuló imputación", "Acuerdo reparatorio", 
+                                                                               "Pendientes por identificar", "Criterio de oportunidad", "0"))
+  # no delito, no flagrancia, ilegal detencion, no vinculacion y vinculacion proceso
+  
+  data_der <- flagr %>% 
+    filter(incompetencia!=1) %>% 
+    filter(!grepl("revis", str_to_lower(observaciones_dgpec_2))) %>% 
+    mutate(tipo=case_when(
+      libertad_homologada %in% c("Artículo 140 CNPP", "Personas mayores de 65 años") ~"Artículo 140 CNPP", 
+      T ~ "Otros"
+    )) %>% 
+    mutate(siglas_fiscalia_inicio=gsub("FI", "", siglas_fiscalia_inicio)) %>% 
+    # mutate(res_puestas=substr(res_puestas, 4, nchar(res_puestas))) %>% 
+    group_by(fiscalia=siglas_fiscalia_inicio, tipo) %>% 
+    summarise(Total=n(), .groups = "drop") %>% group_by(fiscalia) %>% 
+    mutate(Porcentaje=Total/sum(Total)) %>% 
+    filter(tipo!="Otros") %>% ungroup() %>% 
+    complete(fiscalia=nombres_fisc, 
+             fill=list(Total=0, Porcentaje=0)
+             )
+  
+  orden_fisc <- flagr %>% 
+    mutate(siglas_fiscalia_inicio=gsub("FI", "", siglas_fiscalia_inicio)) %>% 
+    group_by(fiscalia=siglas_fiscalia_inicio) %>% 
+    summarise(Total=n()) %>% ungroup() %>% 
+    complete(fiscalia=nombres_fisc, 
+             fill=list(Total=0, Porcentaje=0)
+    ) %>% arrange(-Total) %>% 
+    pull(fiscalia)
+  
+  # alcaldias_faltantes <- setdiff(nombres_fisc, orden_fisc)
+  # 
+  # alcaldias_completas <- c(orden_fisc, alcaldias_faltantes)
+  
+  library(forcats)
+  gr_det <- data_der %>%
+    mutate(fiscalia=factor(fiscalia, levels=rev(orden_fisc))) %>%
+    ggplot(aes(fiscalia, Porcentaje, #fill=fct_rev(res_puestas), 
+               # group=fct_rev(res_puestas)
+    )) +
+    geom_col(fill=colores[1], alpha=.8) + theme_light() + tema_fgj + tema_ppp +
+    coord_flip() +
+    geom_text_repel(data=. %>%
+                      filter(Total>0),
+                    aes(label=paste0(percent(Porcentaje, .1), " (", comma(Total), ")")),
+                    color="black",
+                    # color="white",
+                    size=6, fontface="bold", max.time = 1.5,
+                    position = position_stack(vjust = 0.7), direction = "x"
+    ) +
+    scale_y_continuous(labels = percent) +
+    labs(x="Fiscalía de inicio", y="Total de personas",
+         fill=""
+    ) +
+    theme(legend.position = "bottom")
+  
+  return(gr_det)
+}
+
+
+gr_libertades_140 <- gr_libertad_140(#fiscalia_analisis = "GAM", 
+  fecha_comienzo = "2025-01-16", 
+  fecha_fin = "2025-02-15"
+)
+
+ggsave(plot = gr_libertades_140, 
+       "gr_libertad_mes_260225_140.svg", width = 16, height = 6
+)
+
+
+gr_libertades_hist_140 <- gr_libertad_140(#fiscalia_analisis = "GAM", 
+  fecha_comienzo = "2024-01-01", 
+  fecha_fin = "2025-01-15"
+)
+
+ggsave(plot = gr_libertades_hist_140, 
+       "gr_libertad_quincena_hist_260225_140.svg", width = 16, height = 6
+)
+
 
 #sacmos tabla para complementar gráfica
 flagr <- flagrancias %>% 
@@ -1716,6 +2236,120 @@ flagr %>%
             row.names = F)
 
 
+gr_libertad_demas <- function(
+    # fiscalia_analisis=siglas_fiscalia_analisis,
+  fecha_comienzo=inicio_quincena, 
+  fecha_fin=final_quincena
+) {
+  
+  flagr <- flagrancias %>% 
+    filter(#grepl(fiscalia_analisis, agencia_ini), 
+      fecha_inicio>=fecha_comienzo, 
+      fecha_inicio<=fecha_fin
+    ) %>% 
+    filter(subprocuraduria=="COORDINACIÓN GENERAL DE INVESTIGACIÓN TERRITORIAL", 
+           siglas_fiscalia_inicio!="FIDAMPU"
+    ) #%>% 
+  # filter(res_puestas=="1. Libertad MP")
+  
+  
+  nombres_fisc <- flagrancias %>% 
+    filter(subprocuraduria=="COORDINACIÓN GENERAL DE INVESTIGACIÓN TERRITORIAL", 
+           siglas_fiscalia_inicio!="FIDAMPU"
+    ) %>% 
+    filter(res_puestas=="1. Libertad MP") %>% 
+    mutate(fiscalia=gsub("FI", "", siglas_fiscalia_inicio)) %>% 
+    pull(fiscalia) %>% unique()
+  
+  libertades_importantes <- setdiff(unique(flagrancias$libertad_homologada), c("No se formuló imputación", "Acuerdo reparatorio", 
+                                                                               "Artículo 140 CNPP", "Personas mayores de 65 años",
+                                                                               "Pendientes por identificar", "Criterio de oportunidad", "0"))
+  
+  data_der <- flagr %>% 
+    mutate(criterio=case_when( 
+      libertad_homologada %in% libertades_importantes ~ 1, 
+      T ~ 0
+      
+    )
+    ) %>% 
+    # filter(!id_ap %in% flagr) %>% 
+    mutate(res_puestas=case_when(
+      # criterio==1 & libertad_homologada %in% c("Artículo 140 CNPP", "Personas mayores de 65 años")~ "Artículo 140", 
+      criterio==1 & libertad_homologada %in% c("Falta de querella") ~"Falta de querella", 
+      criterio==1 & libertad_homologada %in% "Perdón de la víctima u ofendido" ~ "Perdón",
+      criterio==1 & libertad_homologada %in% c("Hechos no flagrantes", "No se cumplen los supuestos de la flagrancia") ~ "No flagrancias", 
+      criterio==1 & libertad_homologada %in% c("Hechos no son constitutivos de delito", "No hay responsabilidad penal del imputado") ~ "No delito",
+      # libertad_homologada %in% "Criterio de oportunidad" ~"Criterio de oportunidad",
+      T ~ "Otros"
+    )) %>% 
+    mutate(siglas_fiscalia_inicio=gsub("FI", "", siglas_fiscalia_inicio)) %>% 
+    # mutate(res_puestas=substr(res_puestas, 4, nchar(res_puestas))) %>% 
+    group_by(fiscalia=siglas_fiscalia_inicio, res_puestas, 
+             criterio) %>% 
+    summarise(Total=n(), .groups = "drop") %>% group_by(fiscalia) %>% 
+    mutate(Porcentaje=Total/sum(Total)) %>% ungroup() %>% 
+    filter(criterio==1) %>% 
+    complete(fiscalia=nombres_fisc, 
+             res_puestas=unique(.$res_puestas), 
+             fill = list(Total=0, Porcentaje=0, 
+                         criterio=1)
+    ) %>% 
+    mutate(res_puestas=factor(res_puestas, levels = c("No delito", "No flagrancias", 
+                                                      "Perdón", "Falta de querella"
+    ))) 
+  
+  orden <- flagr %>% 
+    group_by(fiscalia=siglas_fiscalia_inicio) %>% 
+    summarise(Total=n()) %>% ungroup() %>% 
+    complete(fiscalia=c(.$fiscalia)) %>% 
+    arrange(-Total) %>% 
+    mutate(fiscalia=gsub("FI", "", fiscalia)) %>% 
+    pull(fiscalia)
+  
+  library(forcats)
+  gr_det <- data_der %>%
+    mutate(fiscalia=factor(fiscalia, levels=rev(orden))) %>%
+    ggplot(aes(fiscalia, Porcentaje, fill=fct_rev(res_puestas), 
+               # group=fct_rev(res_puestas)
+    )) +
+    geom_col() + theme_light() + tema_fgj + tema_ppp +
+    coord_flip() +
+    geom_text_repel(data=. %>%
+                      filter(Total>0),
+                    aes(label=paste0(percent(Porcentaje, .1), " (", comma(Total), ")")),
+                    color="black", size=6, fontface="bold", max.time = 1.5,
+                    position = position_stack(vjust = 0.7), direction = "x"
+    ) +
+    scale_y_continuous(labels = percent) +
+    labs(x="Fiscalía de inicio", y="Total de personas",
+         fill=""
+    ) +
+    theme(legend.position = "bottom")+
+    scale_fill_manual(values = rev(c( "#5D818B", "#59595C", "#A7A8AC", "#FDE4CB")), 
+                      guide = guide_legend(reverse = TRUE)
+    )
+  
+  return(gr_det)
+}
+
+gr_libertades_demas <- gr_libertad_demas(#fiscalia_analisis = "GAM", 
+  fecha_comienzo = "2025-01-16", 
+  fecha_fin = "2025-02-15"
+)
+
+ggsave(plot = gr_libertades_demas, 
+       "gr_libertad_mes_260225_otras_libertades.svg", width = 16, height = 6
+)
+
+
+gr_libertades_hist_demas <- gr_libertad_demas(#fiscalia_analisis = "GAM", 
+  fecha_comienzo = "2024-01-01", 
+  fecha_fin = "2025-01-15"
+)
+
+ggsave(plot = gr_libertades_hist_demas, 
+       "gr_libertad_quincena_hist_260225_otras_libertades.svg", width = 16, height = 6
+)
 
 gr_judicializacion <- function(
     # fiscalia_analisis=siglas_fiscalia_analisis,
@@ -1776,11 +2410,11 @@ gr_judicializacion <- function(
  
   
   
-  # orden_fisc <- data_9 %>% 
-  #   filter(medida=="absolutos") %>% 
-  #   group_by(fiscalia) %>% 
-  #   summarise(Total=sum(Total)) %>% 
-  #   arrange(-Total) %>% pull(fiscalia)
+  orden_fisc <- data_9 %>%
+    filter(medida=="absolutos") %>%
+    group_by(fiscalia) %>%
+    summarise(Total=sum(Total)) %>%
+    arrange(-Total) %>% pull(fiscalia)
   
   # alcaldias_faltantes <- setdiff(nombres_fisc, orden_fisc)
   # 
@@ -1798,19 +2432,22 @@ gr_judicializacion <- function(
   #   mutate(fiscalia=gsub("FI", "", siglas_fiscalia_inicio)) %>% 
   #   pull(fiscalia) %>% unique()
   
-  orden_fisc <- flagrancias %>% 
-    filter(
-      fecha_inicio>=fecha_comienzo, 
-      fecha_inicio<=fecha_fin, 
-      subprocuraduria=="COORDINACIÓN GENERAL DE INVESTIGACIÓN TERRITORIAL",
-      siglas_fiscalia_inicio!="FIDAMPU",
-      #!(delito %in% cat_masc$modalidad_delito)
-      
-    ) %>% 
-    mutate(fiscalia=gsub("FI", "", siglas_fiscalia_inicio)) %>% 
-    pull(fiscalia) %>% unique() %>% sort()
+  # orden_fisc <- flagrancias %>% 
+  #   filter(
+  #     fecha_inicio>=fecha_comienzo, 
+  #     fecha_inicio<=fecha_fin, 
+  #     subprocuraduria=="COORDINACIÓN GENERAL DE INVESTIGACIÓN TERRITORIAL",
+  #     siglas_fiscalia_inicio!="FIDAMPU",
+  #     #!(delito %in% cat_masc$modalidad_delito)
+  #     
+  #   ) %>% 
+  #   mutate(fiscalia=gsub("FI", "", siglas_fiscalia_inicio)) %>% 
+  #   pull(fiscalia) %>% unique() %>% sort()
     
-  
+  orden_fisc <- data_9 %>% 
+    filter(tipo=="no legal", 
+           medida=="porcentaje"
+           ) %>% arrange(-Total) %>% pull(fiscalia)
   
   gr_det <- data_9 %>%
     spread(medida, Total, fill=0) %>% 
@@ -2314,7 +2951,8 @@ id_campap <- campap_total %>%
   filter(estatus %in% c("Aprobada     ", "Pendiente    ")) %>% 
   drop_na(propuesta) %>% pull(id_ap)
 
-
+id_libertad <- flagrancias %>% 
+  filter(libertad==1) %>% pull(id_ap)
 
 
 data_estatus <- incidencia$base %>% 
@@ -2345,6 +2983,31 @@ data_estatus <- data_estatus %>%
     modalidad_delito %in% cat_esp$modalidad_delito ~ 1, 
     T ~ 0
   ))
+
+data_estatus_libertad <- data_estatus %>% 
+  mutate(libertad=ifelse(id_ap %in% id_libertad, 1, 0)) %>% 
+  left_join(flagrancias %>% filter(libertad==1) %>% 
+              mutate(libertad_homologada=factor(libertad_homologada, 
+                                                c(sort(unique(flagrancias$libertad_homologada))[7], 
+                                                  sort(unique(flagrancias$libertad_homologada))[8], 
+                                                  sort(unique(flagrancias$libertad_homologada))[2:6],
+                                                  sort(unique(flagrancias$libertad_homologada))[9:13], 
+                                                  sort(unique(flagrancias$libertad_homologada))[1])
+              )) %>% 
+              arrange(libertad_homologada) %>% 
+              filter(!duplicated(id_ap)) %>% select(id_ap, libertad_homologada)
+  ) %>% 
+  filter(estatus=="Rezago")
+
+data_estatus_libertad %>% 
+  write.csv("C:/Users/mauri/OneDrive/Documentos/R/fiscalia/Evaluaciones_agencias/data_estatus_milei.csv", 
+            row.names = F
+            )
+
+
+#####radicaciones####
+base_radicaciones <- read.csv("H:/Mi unidad/bases/ini_radicaciones.csv", fileEncoding = "UTF-8"
+                              )
 
 ####datos para emiliano 
 
